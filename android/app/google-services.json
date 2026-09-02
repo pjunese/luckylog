@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "172162771888",
+    "project_id": "lottonote-prod",
+    "storage_bucket": "lottonote-prod.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:172162771888:android:418a9b75a9bf23fc8f8475",
+        "android_client_info": {
+          "package_name": "com.example.my_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCuS4m8nijG-7OYTknAcIi34pcPx5GKtgY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:172162771888:android:bf63b0548ac221a38f8475",
+        "android_client_info": {
+          "package_name": "com.pjunese.lottonote"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCuS4m8nijG-7OYTknAcIi34pcPx5GKtgY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

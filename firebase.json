@@ -1,0 +1,49 @@
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": ["node_modules", ".git", "firebase-debug.log"]
+    }
+  ],
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "lottonote-prod",
+          "appId": "1:172162771888:android:418a9b75a9bf23fc8f8475",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "lottonote-prod",
+          "appId": "1:172162771888:ios:10996adb0cfaff9b8f8475",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "macos": {
+        "default": {
+          "projectId": "lottonote-prod",
+          "appId": "1:172162771888:ios:10996adb0cfaff9b8f8475",
+          "uploadDebugSymbols": false,
+          "fileOutput": "macos/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "lottonote-prod",
+          "configurations": {
+            "android": "1:172162771888:android:418a9b75a9bf23fc8f8475",
+            "ios": "1:172162771888:ios:10996adb0cfaff9b8f8475",
+            "macos": "1:172162771888:ios:10996adb0cfaff9b8f8475"
+          }
+        }
+      }
+    }
+  }
+}

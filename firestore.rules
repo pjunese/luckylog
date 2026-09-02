@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 로또 당첨번호 — 누구나 읽기 가능 (공개 데이터), 쓰기는 Cloud Functions만
+    match /lotto_draws/{round} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // 최신 회차 메타 — 누구나 읽기 가능
+    match /meta/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // 회차별 서비스 집계 (참여자 수 / 세트 수 / 당첨자 수)
+    // 개인 식별 정보 없이 합계만 담기며 홈 화면 카드가 읽는다.
+    // 규칙이 없으면 전체 차단에 걸려 카드가 조용히 사라진다.
+    match /service_stats/{round} {
+      allow read: if true;
+      allow write: if false; // Cloud Functions만 기록
+    }
+
+    // 사용자 데이터 — 본인만 읽기/쓰기
+    //
+    // uid는 카카오/애플 로그인을 서버(createAuthToken)에서 검증한 뒤
+    // 발급한 커스텀 토큰의 값이며, accountKey와 동일한 형식이다.
+    // (kakao:{id} / apple:{sub})
+    //
+    // 주의: 부모 문서 규칙은 하위 컬렉션에 상속되지 않는다.
+    // {document=**} 가 없으면 number_sets / purchase_history 가
+    // 맨 아래 전체 차단 규칙에 걸려 백업이 조용히 실패한다.
+    match /users/{accountKey}/{document=**} {
+      allow read, write: if request.auth != null
+                         && request.auth.uid == accountKey;
+    }
+
+    // 피드백 — 누구나 쓰기 가능, 읽기는 관리자만 (Console에서만 열람)
+    match /feedback/{docId} {
+      allow create: if true;
+      allow read, update, delete: if false;
+    }
+
+    // 나머지 모두 차단
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
