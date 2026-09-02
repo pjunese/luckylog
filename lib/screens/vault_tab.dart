@@ -1159,7 +1159,7 @@ class _SelectFromSavedSetsSheetState extends State<_SelectFromSavedSetsSheet> {
                             child: Row(
                               children: [
                                 Text(
-                                  '${String.fromCharCode(65 + gameIdx)}',
+                                  String.fromCharCode(65 + gameIdx),
                                   style: TextStyle(
                                     fontWeight: FontWeight.w700,
                                     fontSize: 13,

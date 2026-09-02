@@ -66,8 +66,9 @@ class RoundPattern {
   Map<String, int> get rangeDistribution {
     final map = {'1~10': 0, '11~20': 0, '21~30': 0, '31~40': 0, '41~45': 0};
     for (final n in numbers) {
-      if (n <= 10) map['1~10'] = map['1~10']! + 1;
-      else if (n <= 20) map['11~20'] = map['11~20']! + 1;
+      if (n <= 10) {
+        map['1~10'] = map['1~10']! + 1;
+      } else if (n <= 20) map['11~20'] = map['11~20']! + 1;
       else if (n <= 30) map['21~30'] = map['21~30']! + 1;
       else if (n <= 40) map['31~40'] = map['31~40']! + 1;
       else map['41~45'] = map['41~45']! + 1;

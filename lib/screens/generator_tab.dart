@@ -22,11 +22,11 @@ class _NumberGeneratorTabState extends State<NumberGeneratorTab>
     with TickerProviderStateMixin {
   // 슬롯 상태
   List<int?> _numbers = List.filled(6, null);
-  List<int> _rollingDisplay = List.generate(6, (_) => 1);
+  final List<int> _rollingDisplay = List.generate(6, (_) => 1);
   bool _isRolling = false;
   List<bool> _locked = List.filled(6, false);
-  List<Timer?> _rollTimers = List.filled(6, null);
-  List<Timer?> _stopTimers = List.filled(6, null);
+  final List<Timer?> _rollTimers = List.filled(6, null);
+  final List<Timer?> _stopTimers = List.filled(6, null);
 
   // 생성 모드
   bool _photoMode = false;
@@ -63,8 +63,12 @@ class _NumberGeneratorTabState extends State<NumberGeneratorTab>
 
   @override
   void dispose() {
-    for (final t in _rollTimers) t?.cancel();
-    for (final t in _stopTimers) t?.cancel();
+    for (final t in _rollTimers) {
+      t?.cancel();
+    }
+    for (final t in _stopTimers) {
+      t?.cancel();
+    }
     super.dispose();
   }
 
@@ -80,8 +84,9 @@ class _NumberGeneratorTabState extends State<NumberGeneratorTab>
     } else if (_consecutiveMode == 3) {
       for (int i = 0; i < sorted.length - 2; i++) {
         if (sorted[i + 1] - sorted[i] == 1 &&
-            sorted[i + 2] - sorted[i + 1] == 1)
+            sorted[i + 2] - sorted[i + 1] == 1) {
           return false;
+        }
       }
     }
 
@@ -436,11 +441,6 @@ class _NumberGeneratorTabState extends State<NumberGeneratorTab>
     return (sin(prev * 99991.0 + pi) * 1e9).abs() % 1.0;
   }
 
-  int _chaosPickFrom(List<int> pool, double chaosVal) {
-    final int idx = (chaosVal * pool.length).floor().clamp(0, pool.length - 1);
-    return idx;
-  }
-
   void _generate() {
     if (_isRolling) return;
 
@@ -765,7 +765,6 @@ class _NumberGeneratorTabState extends State<NumberGeneratorTab>
 
   Widget _buildPhotoArea(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // 분석 중 상태
     if (_analyzingPhoto) {
@@ -1221,7 +1220,7 @@ class _NumberGeneratorTabState extends State<NumberGeneratorTab>
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
-                                      color: lottoBallTextColor(num!),
+                                      color: lottoBallTextColor(num),
                                     ),
                                   )
                                 : Text(

@@ -109,7 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 'assets/kakao_logo.png',
                                 width: 20,
                                 height: 20,
-                                errorBuilder: (_, __, ___) => const Icon(Icons.chat_bubble, size: 20),
+                                errorBuilder: (_, _, _) => const Icon(Icons.chat_bubble, size: 20),
                               ),
                               const SizedBox(width: 8),
                               const Text(

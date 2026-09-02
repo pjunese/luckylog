@@ -181,7 +181,7 @@ class _FrequencyTabState extends State<_FrequencyTab>
               padding: const EdgeInsets.all(16),
               children: [
                 Text(
-                  '데이터 기준: ${_fromRound}~${_latestRound}회',
+                  '데이터 기준: $_fromRound~$_latestRound회',
                   style: TextStyle(
                     fontSize: 12,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -226,7 +226,7 @@ class _FrequencyTabState extends State<_FrequencyTab>
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               itemCount: _filters.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 6),
+              separatorBuilder: (_, _) => const SizedBox(width: 6),
               itemBuilder: (_, i) {
                 final opt = _filters[i];
                 final bool selected = _recentN == opt.value;
@@ -709,7 +709,7 @@ class _TrendTabState extends State<_TrendTab>
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             itemCount: _options.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 6),
+            separatorBuilder: (_, _) => const SizedBox(width: 6),
             itemBuilder: (_, i) {
               final int n = _options[i];
               return FilterChip(
@@ -783,7 +783,7 @@ class _TrendTabState extends State<_TrendTab>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '최근 $_recentN회 요약 (${fromRound}~$_latestRound회)',
+          '최근 $_recentN회 요약 ($fromRound~$_latestRound회)',
           style: Theme.of(context).textTheme.titleSmall,
         ),
         const SizedBox(height: 10),
@@ -952,9 +952,9 @@ class _ConsecutiveDetailTabState extends State<_ConsecutiveDetailTab>
     setState(() {
       _latestRound = latest;
       _fromRound = from;
-      _consecutiveDist = results[0] as Map<int, int>;
-      _pairSeqFreq = results[1] as Map<int, int>;
-      _tripleSeqFreq = results[2] as Map<int, int>;
+      _consecutiveDist = results[0];
+      _pairSeqFreq = results[1];
+      _tripleSeqFreq = results[2];
       _loading = false;
     });
   }
@@ -1121,7 +1121,7 @@ class _ConsecutiveDetailTabState extends State<_ConsecutiveDetailTab>
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '데이터 기준: ${_fromRound}~${_latestRound}회 (보너스 제외)',
+                    '데이터 기준: $_fromRound~$_latestRound회 (보너스 제외)',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -1471,7 +1471,7 @@ class _PatternTabState extends State<_PatternTab>
                   borderData: FlBorderData(show: false),
                   barTouchData: BarTouchData(
                     touchTooltipData: BarTouchTooltipData(
-                      getTooltipItem: (group, _, rod, __) {
+                      getTooltipItem: (group, _, rod, _) {
                         final int count = rod.toY.toInt();
                         final double pct = total == 0 ? 0 : count / total * 100;
                         return BarTooltipItem(
@@ -1617,7 +1617,7 @@ class _PatternTabState extends State<_PatternTab>
                   borderData: FlBorderData(show: false),
                   barTouchData: BarTouchData(
                     touchTooltipData: BarTouchTooltipData(
-                      getTooltipItem: (group, _, rod, __) {
+                      getTooltipItem: (group, _, rod, _) {
                         final int count = rod.toY.toInt();
                         final double pct = total == 0 ? 0 : count / total * 100;
                         return BarTooltipItem(
@@ -1742,7 +1742,7 @@ class _PatternTabState extends State<_PatternTab>
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            '집계범위 ${_coFromRound}~${_coToRound}회',
+                            '집계범위 $_coFromRound~$_coToRound회',
                             style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
@@ -1776,7 +1776,7 @@ class _PatternTabState extends State<_PatternTab>
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            '기준번호 등장 ${_coTargetAppearCount}회',
+                            '기준번호 등장 $_coTargetAppearCount회',
                             style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
@@ -1946,7 +1946,7 @@ class _FreqBall extends StatelessWidget {
           _SmallBall(number: number),
           const SizedBox(width: 4),
           Text(
-            '${freq}회',
+            '$freq회',
             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
           ),
         ],
@@ -2212,7 +2212,7 @@ class _ConsecutiveRoundsSheetState extends State<_ConsecutiveRoundsSheet> {
                     controller: controller,
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: _rows!.length,
-                    separatorBuilder: (_, __) =>
+                    separatorBuilder: (_, _) =>
                         const Divider(height: 1, indent: 16, endIndent: 16),
                     itemBuilder: (_, i) {
                       final row = _rows![i];
@@ -2268,12 +2268,10 @@ class _ConsecBall extends StatelessWidget {
   const _ConsecBall({
     required this.number,
     required this.highlight,
-    this.isBonus = false,
   });
 
   final int number;
   final bool highlight;
-  final bool isBonus;
 
   @override
   Widget build(BuildContext context) {
@@ -2284,9 +2282,6 @@ class _ConsecBall extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: highlight ? color : Colors.grey.shade200,
-        border: isBonus
-            ? Border.all(color: Colors.orange.shade400, width: 1.5)
-            : null,
       ),
       child: Center(
         child: Text(

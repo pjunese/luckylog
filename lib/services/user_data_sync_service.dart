@@ -256,7 +256,7 @@ class UserDataSyncService {
       'lastLoginAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'schemaVersion': 1,
-      if (fcmToken != null) 'fcmToken': fcmToken,
+      'fcmToken': ?fcmToken,
     }, SetOptions(merge: true));
   }
 

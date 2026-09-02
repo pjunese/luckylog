@@ -527,9 +527,9 @@ class LottoDatabase {
     };
     for (final r in rows) {
       final int t = r['total'] as int;
-      if (t <= 80)
+      if (t <= 80) {
         dist['~80'] = dist['~80']! + 1;
-      else if (t <= 100)
+      } else if (t <= 100)
         dist['81~100'] = dist['81~100']! + 1;
       else if (t <= 120)
         dist['101~120'] = dist['101~120']! + 1;
@@ -578,9 +578,9 @@ class LottoDatabase {
     };
     for (final r in rows) {
       final int n = r['number'] as int;
-      if (n <= 10)
+      if (n <= 10) {
         dist['1~10'] = dist['1~10']! + 1;
-      else if (n <= 20)
+      } else if (n <= 20)
         dist['11~20'] = dist['11~20']! + 1;
       else if (n <= 30)
         dist['21~30'] = dist['21~30']! + 1;

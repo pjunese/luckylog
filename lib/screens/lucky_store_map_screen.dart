@@ -468,7 +468,6 @@ class _NearbyStoresTabState extends State<_NearbyStoresTab> {
   bool _isLoading = false;
   String? _error;
   List<Map<String, dynamic>> _places = [];
-  double? _userLat, _userLng;
 
   Future<void> _searchNearby() async {
     setState(() {
@@ -495,9 +494,6 @@ class _NearbyStoresTabState extends State<_NearbyStoresTab> {
           accuracy: LocationAccuracy.high,
         ),
       );
-      _userLat = pos.latitude;
-      _userLng = pos.longitude;
-
       // 카카오 로컬 API 호출
       final uri = Uri.parse(
         'https://dapi.kakao.com/v2/local/search/keyword.json'
@@ -621,7 +617,7 @@ class _NearbyStoresTabState extends State<_NearbyStoresTab> {
                 )
               : ListView.separated(
                   itemCount: _places.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (ctx, i) {
                     final p = _places[i];
                     final dist = p['distance'] as int;
@@ -723,7 +719,7 @@ class _MapMarkerWidget extends StatelessWidget {
               ),
               child: Center(
                 child: Text(
-                  wins > 1 ? '${grade}등\n×$wins' : '${grade}등',
+                  wins > 1 ? '$grade등\n×$wins' : '$grade등',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: grade == 1 ? Colors.black87 : Colors.white,

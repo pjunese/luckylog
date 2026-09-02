@@ -236,7 +236,7 @@ class _LatestPrizeCompactCard extends StatelessWidget {
       return '${eok.toStringAsFixed(eok % 1 == 0 ? 0 : 1)}억원';
     }
     if (n >= 10000) return '${(n / 10000).toStringAsFixed(0)}만원';
-    return '${n}원';
+    return '$n원';
   }
 
   @override
@@ -349,7 +349,7 @@ class _DrawDetailSheetState extends State<_DrawDetailSheet>
       return '${eok.toStringAsFixed(eok % 1 == 0 ? 0 : 1)}억원';
     }
     if (n >= 10000) return '${(n / 10000).toStringAsFixed(0)}만원';
-    return '${n}원';
+    return '$n원';
   }
 
   @override

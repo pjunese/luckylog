@@ -171,7 +171,7 @@ class _ProfileTabState extends State<ProfileTab> {
                 const Spacer(),
                 if (totalCount > 0)
                   Text(
-                    '${totalCount}건 / ${_formatWon(totalAmount)}',
+                    '$totalCount건 / ${_formatWon(totalAmount)}',
                     style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                   ),
               ],
@@ -685,9 +685,9 @@ class _ProfileTabState extends State<ProfileTab> {
     if (amount >= 10000) {
       final man = amount ~/ 10000;
       final rem = amount % 10000;
-      return rem == 0 ? '$man만원' : '$man만 ${rem}원';
+      return rem == 0 ? '$man만원' : '$man만 $rem원';
     }
-    return '${amount}원';
+    return '$amount원';
   }
 }
 
