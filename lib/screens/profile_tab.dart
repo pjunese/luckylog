@@ -9,8 +9,11 @@ import '../models/draw_result.dart';
 import '../models/purchase_record.dart';
 import '../services/apple_auth_service.dart';
 import '../services/kakao_auth_service.dart';
+import '../services/lotto_sync_service.dart';
 import '../services/notification_service.dart';
+import '../services/share_service.dart';
 import '../services/user_service.dart';
+import '../widgets/result_share_card.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({
@@ -38,6 +41,8 @@ class _ProfileTabState extends State<ProfileTab> {
   bool _loading = true;
   // 당첨 기록 캐시 (round → DrawResult)
   final Map<int, DrawResult> _drawCache = {};
+  // 회차별 당첨금 캐시 (round → prizes) — 1~3등은 회차마다 달라 서버 값이 필요
+  final Map<int, Map<String, dynamic>> _prizeCache = {};
 
   @override
   void initState() {
@@ -78,6 +83,7 @@ class _ProfileTabState extends State<ProfileTab> {
         });
       }
     }
+    await _loadPrizeCache();
   }
 
   String? _calcPrize(List<int> game, DrawResult draw) {
@@ -108,8 +114,15 @@ class _ProfileTabState extends State<ProfileTab> {
     }
   }
 
-  /// 등수별 추정 당첨금 (4등: 5만원, 5등: 5천원 고정. 1~3등은 회차별 데이터 필요)
-  int _estimatePrizeAmount(String prize) {
+  /// 회차별 실제 당첨금 (Firestore에서 수집한 1개당 당첨금).
+  /// 1~3등은 회차마다 달라서 이 값이 있어야 정확하다.
+  int _prizeAmount(int round, String prize) {
+    final rank = prize.replaceAll('등', '');
+    final perPrize =
+        (_prizeCache[round]?[rank]?['perPrize'] as num?)?.toInt() ?? 0;
+    if (perPrize > 0) return perPrize;
+
+    // 아직 못 받았거나 수집 실패한 경우: 고정 등수만 폴백
     switch (prize) {
       case '4등':
         return 50000;
@@ -117,6 +130,60 @@ class _ProfileTabState extends State<ProfileTab> {
         return 5000;
       default:
         return 0;
+    }
+  }
+
+  /// 당첨 기록이 있는 회차의 당첨금 정보를 받아둔다.
+  Future<void> _loadPrizeCache() async {
+    final rounds = <int>{};
+    for (final record in widget.purchaseHistory) {
+      final draw = _drawCache[record.round];
+      if (draw == null) continue;
+      final hasWin = record.games.any((g) => _calcPrize(g, draw) != null);
+      if (hasWin) rounds.add(record.round);
+    }
+
+    for (final round in rounds) {
+      if (_prizeCache.containsKey(round)) continue;
+      final detail = await LottoSyncService.fetchDrawDetail(round);
+      final prizes = detail?['prizes'];
+      if (prizes is Map && mounted) {
+        setState(() {
+          _prizeCache[round] = Map<String, dynamic>.from(prizes);
+        });
+      }
+    }
+  }
+
+  /// 당첨 결과를 이미지 카드로 만들어 공유한다.
+  Future<void> _shareWin(_WinEntry w) async {
+    final draw = _drawCache[w.round];
+    if (draw == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('당첨번호를 불러오는 중이에요. 잠시 후 다시 시도해주세요.')),
+      );
+      return;
+    }
+
+    final ok = await ShareService.shareWidget(
+      widget: ResultShareCard(
+        round: w.round,
+        numbers: w.game,
+        winningNumbers: draw.winningNumbers,
+        bonusNumber: draw.bonusNumber,
+        rankLabel: w.prize,
+        amount: w.amount,
+        drawDate: w.drawDate,
+      ),
+      size: const Size(340, 300),
+      fileName: 'lottonote_${w.round}회',
+    );
+
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('공유에 실패했어요.')));
     }
   }
 
@@ -136,7 +203,7 @@ class _ProfileTabState extends State<ProfileTab> {
               gameIndex: gi,
               game: record.games[gi],
               prize: prize,
-              amount: _estimatePrizeAmount(prize),
+              amount: _prizeAmount(record.round, prize),
             ),
           );
         }
@@ -252,6 +319,15 @@ class _ProfileTabState extends State<ProfileTab> {
                                 color: cs.onSurfaceVariant,
                               ),
                             ),
+                          IconButton(
+                            onPressed: () => _shareWin(w),
+                            icon: const Icon(Icons.ios_share, size: 18),
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.only(left: 8),
+                            constraints: const BoxConstraints(),
+                            tooltip: '결과 공유',
+                            color: cs.onSurfaceVariant,
+                          ),
                         ],
                       ),
                     ),
