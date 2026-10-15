@@ -3,7 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:my_app/core/lotto_palette.dart';
 import 'package:my_app/widgets/mini_lotto_ball.dart';
 
-Widget wrap(Widget child) => MaterialApp(home: Scaffold(body: Center(child: child)));
+Widget wrap(Widget child) => MaterialApp(
+  home: Scaffold(body: Center(child: child)),
+);
 
 BoxDecoration decorationOf(WidgetTester tester) {
   final container = tester.widget<Container>(
@@ -30,15 +32,15 @@ void main() {
     expect(d.shape, BoxShape.circle);
   });
 
-  testWidgets('보너스 볼은 반투명 배경 + 테두리로 구분된다', (tester) async {
+  testWidgets('보너스 볼은 불투명 배경과 테두리로 대비를 유지한다', (tester) async {
     await tester.pumpWidget(
       wrap(const MiniLottoBall(number: 7, isBonus: true)),
     );
     final d = decorationOf(tester);
 
-    // 같은 계열 색이지만 투명해져야 한다
-    expect(d.color, isNot(lottoBallColor(7)));
-    expect(d.color!.a, lessThan(1.0));
+    // 보너스도 숫자의 대비가 줄어들지 않는다.
+    expect(d.color, lottoBallColor(7));
+    expect(d.color!.a, 1.0);
     expect(d.border, isNotNull);
   });
 

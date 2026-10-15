@@ -1,44 +1,71 @@
+import '../widgets/app_snack_bar.dart';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../db/lotto_database.dart';
 import '../models/draw_result.dart';
 import '../models/purchase_record.dart';
 import '../services/apple_auth_service.dart';
+import '../services/firebase_auth_bridge.dart';
+import '../services/user_data_sync_service.dart';
 import '../services/kakao_auth_service.dart';
-import '../services/lotto_sync_service.dart';
 import '../services/notification_service.dart';
 import '../services/share_service.dart';
 import '../services/user_service.dart';
 import '../widgets/result_share_card.dart';
+import '../services/purchase_insights_controller.dart';
+import 'purchase_calendar_tab.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({
     super.key,
     required this.onLogout,
+    required this.insights,
     required this.onRequireLogin,
     required this.purchaseHistory,
     required this.themeMode,
     required this.onThemeModeChanged,
   });
 
-  final VoidCallback onLogout;
+  final Future<void> Function() onLogout;
+  final PurchaseInsightsController insights;
   final VoidCallback onRequireLogin;
   final List<PurchaseRecord> purchaseHistory;
   final ThemeMode themeMode;
   final Future<void> Function(ThemeMode) onThemeModeChanged;
 
   @override
-  State<ProfileTab> createState() => _ProfileTabState();
+  State<ProfileTab> createState() => ProfileTabState();
 }
 
-class _ProfileTabState extends State<ProfileTab> {
+class ProfileTabState extends State<ProfileTab>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs;
+  int _recordsRevision = 0;
+  void openRecords() {
+    if (!mounted) return;
+    setState(() => _recordsRevision++);
+    _tabs.animateTo(0);
+  }
+
+  @override
+  void dispose() {
+    widget.insights.removeListener(_loadDrawCache);
+    _tabs.dispose();
+    super.dispose();
+  }
+
   String _nickname = '';
   String? _imagePath;
   bool _loading = true;
+  bool _recovering = false;
+  int _notificationRequest = 0;
+  int _legacyCount = 0;
+  int _guestCount = 0;
   // 당첨 기록 캐시 (round → DrawResult)
   final Map<int, DrawResult> _drawCache = {};
   // 회차별 당첨금 캐시 (round → prizes) — 1~3등은 회차마다 달라 서버 값이 필요
@@ -47,6 +74,8 @@ class _ProfileTabState extends State<ProfileTab> {
   @override
   void initState() {
     super.initState();
+    _tabs = TabController(length: 2, vsync: this);
+    widget.insights.addListener(_loadDrawCache);
     _load();
     _loadNotifSetting();
     _loadDrawCache();
@@ -57,32 +86,17 @@ class _ProfileTabState extends State<ProfileTab> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.purchaseHistory != widget.purchaseHistory) {
       _loadDrawCache();
+      _load();
     }
   }
 
   Future<void> _loadDrawCache() async {
-    final rounds = widget.purchaseHistory.map((r) => r.round).toSet();
-    for (final round in rounds) {
-      if (_drawCache.containsKey(round)) continue;
-      final row = await LottoDatabase.instance.getDrawResult(round);
-      if (row != null && mounted) {
-        setState(() {
-          _drawCache[round] = DrawResult(
-            round: round,
-            winningNumbers: [
-              row['num1'] as int,
-              row['num2'] as int,
-              row['num3'] as int,
-              row['num4'] as int,
-              row['num5'] as int,
-              row['num6'] as int,
-            ],
-            bonusNumber: row['bonus'] as int,
-            drawDate: '',
-          );
-        });
-      }
-    }
+    if (!mounted) return;
+    setState(() {
+      _drawCache
+        ..clear()
+        ..addAll(widget.insights.value.draws);
+    });
     await _loadPrizeCache();
   }
 
@@ -135,24 +149,16 @@ class _ProfileTabState extends State<ProfileTab> {
 
   /// 당첨 기록이 있는 회차의 당첨금 정보를 받아둔다.
   Future<void> _loadPrizeCache() async {
-    final rounds = <int>{};
-    for (final record in widget.purchaseHistory) {
-      final draw = _drawCache[record.round];
-      if (draw == null) continue;
-      final hasWin = record.games.any((g) => _calcPrize(g, draw) != null);
-      if (hasWin) rounds.add(record.round);
-    }
-
-    for (final round in rounds) {
-      if (_prizeCache.containsKey(round)) continue;
-      final detail = await LottoSyncService.fetchDrawDetail(round);
-      final prizes = detail?['prizes'];
-      if (prizes is Map && mounted) {
-        setState(() {
-          _prizeCache[round] = Map<String, dynamic>.from(prizes);
-        });
+    if (!mounted) return;
+    setState(() {
+      _prizeCache.clear();
+      for (final round in widget.insights.value.prizes.entries) {
+        _prizeCache[round.key] = {
+          for (final prize in round.value.entries)
+            '${prize.key}': {'perPrize': prize.value},
+        };
       }
-    }
+    });
   }
 
   /// 당첨 결과를 이미지 카드로 만들어 공유한다.
@@ -160,8 +166,9 @@ class _ProfileTabState extends State<ProfileTab> {
     final draw = _drawCache[w.round];
     if (draw == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('당첨번호를 불러오는 중이에요. 잠시 후 다시 시도해주세요.')),
+      showAppSnackBar(
+        context,
+        content: Text('당첨번호를 불러오는 중이에요. 잠시 후 다시 시도해주세요.'),
       );
       return;
     }
@@ -177,13 +184,11 @@ class _ProfileTabState extends State<ProfileTab> {
         drawDate: w.drawDate,
       ),
       size: const Size(340, 300),
-      fileName: 'lottonote_${w.round}회',
+      fileName: 'luckylog_${w.round}회',
     );
 
     if (!ok && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('공유에 실패했어요.')));
+      showAppSnackBar(context, content: Text('공유에 실패했어요.'));
     }
   }
 
@@ -347,10 +352,23 @@ class _ProfileTabState extends State<ProfileTab> {
   }
 
   Future<void> _load() async {
-    final nickname = await UserService.getNickname(KakaoAuthService.userNumber);
-    final imagePath = await UserService.getProfileImagePath();
-    if (!mounted) return;
+    final owner = LottoDatabase.instance.accountKey;
+    final number = owner == null
+        ? 0
+        : await UserService.cachedUserNumber(owner);
+    final nickname = owner == null
+        ? '게스트'
+        : await UserService.getNickname(number);
+    final legacyCount = await LottoDatabase.instance
+        .getUnassignedLegacyRecordCount();
+    final imagePath = owner == null
+        ? null
+        : await UserService.getProfileImagePath();
+    final guestCount = await LottoDatabase.instance.getGuestRecordCount();
+    if (!mounted || LottoDatabase.instance.accountKey != owner) return;
     setState(() {
+      _legacyCount = legacyCount;
+      _guestCount = guestCount;
       _nickname = nickname.isEmpty
           ? (KakaoAuthService.isLoggedIn ? '사용자' : '게스트')
           : nickname;
@@ -365,30 +383,112 @@ class _ProfileTabState extends State<ProfileTab> {
   }
 
   Future<void> _toggleNotif(bool value) async {
-    final applied = await NotificationService.setEnabled(value);
-    if (!mounted) return;
+    final request = ++_notificationRequest;
+    try {
+      final applied = await NotificationService.setEnabled(value);
+      if (mounted && request == _notificationRequest && value && !applied) {
+        showAppSnackBar(
+          context,
+          content: const Text('기기에서 알림이 꺼져 있어요. 설정에서 허용해주세요.'),
+          action: SnackBarAction(
+            label: '설정 열기',
+            onPressed: () {
+              Geolocator.openAppSettings();
+            },
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted && request == _notificationRequest) {
+        showAppSnackBar(context, content: Text('알림 설정을 저장하지 못했어요. 다시 시도해주세요.'));
+      }
+    }
+  }
 
-    // 켜려 했는데 권한이 없어 반영되지 않은 경우 안내
-    if (value && !applied) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('기기 설정에서 알림을 허용해야 받을 수 있어요.')),
+  Future<void> _recoverLegacyRecords({bool guest = false}) async {
+    final owner = LottoDatabase.instance.accountKey;
+    if (_recovering ||
+        owner == null ||
+        !FirebaseAuthBridge.isSignedInAs(owner)) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(guest ? '게스트 기록 가져오기' : '이전 기록 가져오기'),
+        content: Text(
+          '이 기기에 남아 있는 ${guest ? '게스트 기록 $_guestCount' : '이전 버전 기록 $_legacyCount'}개를 현재 계정으로 가져옵니다. 모두 본인 기록일 때만 진행해주세요. 원래 기록은 보존됩니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('내 기록 가져오기'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted ||
+        confirmed != true ||
+        LottoDatabase.instance.accountKey != owner ||
+        !FirebaseAuthBridge.isSignedInAs(owner)) {
+      return;
+    }
+    setState(() => _recovering = true);
+    try {
+      final count = guest
+          ? await LottoDatabase.instance.claimGuestRecords()
+          : await LottoDatabase.instance.claimUnassignedLegacyRecords();
+      if (!mounted) return;
+      await _load();
+      if (mounted) {
+        showAppSnackBar(
+          context,
+          content: Text('$count개 기록을 가져왔습니다. 가져오지 못한 원래 기록도 보존되어 있습니다.'),
+        );
+      }
+      await UserDataSyncService.pushLocalSnapshot(
+        accountKey: owner,
+        userNumber: 0,
       );
+    } catch (e) {
+      if (mounted) {
+        showAppSnackBar(
+          context,
+          content: Text('기록은 이 기기에 보관되어 있습니다. 연결 후 동기화를 다시 시도해주세요.'),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _recovering = false);
     }
   }
 
   Future<void> _pickImage() async {
+    final owner = LottoDatabase.instance.accountKey;
+    if (owner == null || !FirebaseAuthBridge.isSignedInAs(owner)) return;
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 80,
     );
-    if (picked == null) return;
-    await UserService.saveProfileImagePath(picked.path);
-    if (!mounted) return;
+    if (picked == null || !_matchesAccount(owner)) return;
+    await UserService.saveProfileImagePath(picked.path, accountKey: owner);
+    if (!_matchesAccount(owner)) return;
     setState(() => _imagePath = picked.path);
   }
 
+  bool _matchesAccount(String? owner) =>
+      mounted &&
+      LottoDatabase.instance.accountKey == owner &&
+      (owner == null
+          ? !FirebaseAuthBridge.isSignedIn
+          : FirebaseAuthBridge.isSignedInAs(owner));
+
   Future<void> _showFeedbackDialog() async {
+    final owner = LottoDatabase.instance.accountKey;
     String selectedCategory = '일반 의견';
     const categories = ['일반 의견', '버그 신고', '기능 요청', '기타'];
 
@@ -398,6 +498,7 @@ class _ProfileTabState extends State<ProfileTab> {
         final controller = TextEditingController();
         return StatefulBuilder(
           builder: (ctx, setDialogState) => AlertDialog(
+            scrollable: true,
             title: const Text('의견 보내기'),
             content: SingleChildScrollView(
               child: Column(
@@ -457,7 +558,9 @@ class _ProfileTabState extends State<ProfileTab> {
                   final text = controller.text.trim();
                   if (text.isEmpty) return;
                   Navigator.pop(ctx);
-                  _submitFeedback(selectedCategory, text);
+                  if (_matchesAccount(owner)) {
+                    _submitFeedback(selectedCategory, text, owner);
+                  }
                 },
                 child: const Text('보내기'),
               ),
@@ -468,13 +571,18 @@ class _ProfileTabState extends State<ProfileTab> {
     );
   }
 
-  Future<void> _submitFeedback(String category, String text) async {
+  Future<void> _submitFeedback(
+    String category,
+    String text,
+    String? owner,
+  ) async {
     try {
       final bool isLoggedIn =
           KakaoAuthService.isLoggedIn || AppleAuthService.isLoggedIn;
-      final int userNum = KakaoAuthService.isLoggedIn
-          ? KakaoAuthService.userNumber
-          : AppleAuthService.userNumber;
+      final int userNum = owner == null
+          ? 0
+          : await UserService.cachedUserNumber(owner);
+      if (!_matchesAccount(owner)) return;
       final String provider = AppleAuthService.isLoggedIn
           ? 'apple'
           : KakaoAuthService.isLoggedIn
@@ -490,21 +598,20 @@ class _ProfileTabState extends State<ProfileTab> {
       });
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('소중한 의견 감사합니다! 검토 후 반영할게요 🙏'),
-          duration: Duration(seconds: 3),
-        ),
+      showAppSnackBar(
+        context,
+        content: Text('소중한 의견 감사합니다! 검토 후 반영할게요 🙏'),
+        duration: Duration(seconds: 3),
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('전송에 실패했습니다. 잠시 후 다시 시도해주세요.')),
-      );
+      showAppSnackBar(context, content: Text('전송에 실패했습니다. 잠시 후 다시 시도해주세요.'));
     }
   }
 
   Future<void> _editNickname() async {
+    final owner = LottoDatabase.instance.accountKey;
+    if (owner == null || !FirebaseAuthBridge.isSignedInAs(owner)) return;
     final controller = TextEditingController(text: _nickname);
     final result = await showDialog<String>(
       context: context,
@@ -528,16 +635,40 @@ class _ProfileTabState extends State<ProfileTab> {
         ],
       ),
     );
-    if (result == null || result.isEmpty) return;
-    final editAccountKey =
-        KakaoAuthService.accountKey ?? AppleAuthService.accountKey;
-    await UserService.saveNickname(result, accountKey: editAccountKey);
-    if (!mounted) return;
+    if (result == null || result.isEmpty || !_matchesAccount(owner)) return;
+    await UserService.saveNickname(result, accountKey: owner);
+    if (!_matchesAccount(owner)) return;
     setState(() => _nickname = result);
   }
 
   @override
   Widget build(BuildContext context) {
+    return Column(
+      children: [
+        TabBar(
+          controller: _tabs,
+          tabs: const [
+            Tab(text: '기록'),
+            Tab(text: '내 정보'),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabs,
+            children: [
+              PurchaseCalendarTab(
+                key: ValueKey(_recordsRevision),
+                controller: widget.insights,
+              ),
+              _buildProfile(context),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfile(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     final bool isLoggedIn =
         KakaoAuthService.isLoggedIn || AppleAuthService.isLoggedIn;
@@ -549,7 +680,7 @@ class _ProfileTabState extends State<ProfileTab> {
     // 구매 통계 계산
     final int totalGames = widget.purchaseHistory.fold(
       0,
-      (sum, r) => sum + r.games.length,
+      (total, r) => total + r.games.length,
     );
     final int totalSpent = totalGames * 1000;
 
@@ -638,7 +769,8 @@ class _ProfileTabState extends State<ProfileTab> {
                     Expanded(
                       child: _StatItem(
                         label: '총 구매 회차',
-                        value: '${widget.purchaseHistory.length}회차',
+                        value:
+                            '${widget.purchaseHistory.map((r) => r.round).toSet().length}회차',
                       ),
                     ),
                     Expanded(
@@ -670,30 +802,46 @@ class _ProfileTabState extends State<ProfileTab> {
           child: Column(
             children: [
               // 다크모드
-              ListTile(
-                leading: const Icon(Icons.dark_mode_outlined),
-                title: const Text('다크모드'),
-                trailing: SegmentedButton<ThemeMode>(
-                  showSelectedIcon: false,
-                  style: const ButtonStyle(
-                    visualDensity: VisualDensity(horizontal: -3, vertical: -2),
-                  ),
-                  segments: const [
-                    ButtonSegment(
-                      value: ThemeMode.light,
-                      label: Text('라이트', style: TextStyle(fontSize: 11)),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.dark_mode_outlined),
+                        SizedBox(width: 12),
+                        Expanded(child: Text('다크모드')),
+                      ],
                     ),
-                    ButtonSegment(
-                      value: ThemeMode.system,
-                      label: Text('시스템', style: TextStyle(fontSize: 11)),
-                    ),
-                    ButtonSegment(
-                      value: ThemeMode.dark,
-                      label: Text('다크', style: TextStyle(fontSize: 11)),
+                    const SizedBox(height: 8),
+                    SegmentedButton<ThemeMode>(
+                      showSelectedIcon: false,
+                      style: const ButtonStyle(
+                        visualDensity: VisualDensity(
+                          horizontal: -3,
+                          vertical: -2,
+                        ),
+                      ),
+                      segments: const [
+                        ButtonSegment(
+                          value: ThemeMode.light,
+                          label: Text('라이트', style: TextStyle(fontSize: 11)),
+                        ),
+                        ButtonSegment(
+                          value: ThemeMode.system,
+                          label: Text('시스템', style: TextStyle(fontSize: 11)),
+                        ),
+                        ButtonSegment(
+                          value: ThemeMode.dark,
+                          label: Text('다크', style: TextStyle(fontSize: 11)),
+                        ),
+                      ],
+                      selected: {widget.themeMode},
+                      onSelectionChanged: (s) =>
+                          widget.onThemeModeChanged(s.first),
                     ),
                   ],
-                  selected: {widget.themeMode},
-                  onSelectionChanged: (s) => widget.onThemeModeChanged(s.first),
                 ),
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
@@ -702,12 +850,17 @@ class _ProfileTabState extends State<ProfileTab> {
               // 값을 구독해서 나중에 바뀌어도 토글이 따라가게 한다.
               ValueListenableBuilder<bool>(
                 valueListenable: NotificationService.enabledNotifier,
-                builder: (context, enabled, _) => SwitchListTile(
-                  secondary: const Icon(Icons.notifications_outlined),
-                  title: const Text('추첨 결과 알림'),
-                  subtitle: const Text('매주 토요일 결과 푸시 알림'),
-                  value: enabled,
-                  onChanged: _toggleNotif,
+                builder: (context, enabled, _) => ValueListenableBuilder<bool>(
+                  valueListenable: NotificationService.pendingNotifier,
+                  builder: (context, pending, _) => SwitchListTile(
+                    secondary: const Icon(Icons.notifications_outlined),
+                    title: const Text('추첨 결과 알림'),
+                    subtitle: Text(
+                      pending ? '설정 저장됨 · 서버에 반영 중' : '매주 토요일 결과 푸시 알림',
+                    ),
+                    value: enabled,
+                    onChanged: _toggleNotif,
+                  ),
                 ),
               ),
               const Divider(height: 1, indent: 16, endIndent: 16),
@@ -728,6 +881,34 @@ class _ProfileTabState extends State<ProfileTab> {
 
         const SizedBox(height: 8),
 
+        if (isLoggedIn && _guestCount > 0)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.person_add_alt),
+              title: Text('게스트 기록 $_guestCount개 가져오기'),
+              subtitle: const Text('본인 기록을 현재 계정에 연결해 백업합니다.'),
+              onTap: _recovering
+                  ? null
+                  : () => _recoverLegacyRecords(guest: true),
+            ),
+          ),
+        if (_legacyCount > 0)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.restore),
+              title: Text('이전 버전 기록 $_legacyCount개 보관 중'),
+              subtitle: Text(
+                isLoggedIn ? '본인 기록을 현재 계정으로 가져오기' : '로그인 후 본인 기록을 가져올 수 있습니다.',
+              ),
+              trailing: _recovering
+                  ? const CircularProgressIndicator()
+                  : const Icon(Icons.chevron_right),
+              onTap: isLoggedIn && !_recovering
+                  ? () => _recoverLegacyRecords()
+                  : null,
+            ),
+          ),
+
         // ── 계정 섹션 ──
         Card(
           child: isLoggedIn
@@ -738,12 +919,18 @@ class _ProfileTabState extends State<ProfileTab> {
                     style: TextStyle(color: Colors.redAccent),
                   ),
                   onTap: () async {
-                    await KakaoAuthService.logout();
-                    await AppleAuthService.logout();
-                    await UserService.clearProfile();
-                    if (!mounted) return;
-                    setState(() => _nickname = '게스트');
-                    widget.onLogout();
+                    try {
+                      await widget.onLogout();
+                    } catch (e) {
+                      if (context.mounted) {
+                        showAppSnackBar(
+                          context,
+                          content: Text(
+                            '로그아웃을 완료하지 못했습니다. 인터넷 연결 후 다시 시도해주세요.',
+                          ),
+                        );
+                      }
+                    }
                   },
                 )
               : ListTile(

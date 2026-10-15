@@ -120,13 +120,13 @@ class _SplashScreenState extends State<SplashScreen>
             ),
             const SizedBox(height: 48),
 
-            // 로또노트 텍스트 페이드인
+            // 럭키로그 텍스트 페이드인
             FadeTransition(
               opacity: _fadeAnim,
               child: Column(
                 children: [
                   const Text(
-                    '로또노트',
+                    '럭키로그',
                     style: TextStyle(
                       fontSize: 34,
                       fontWeight: FontWeight.bold,

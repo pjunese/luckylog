@@ -22,7 +22,7 @@ class ShareService {
     required Widget widget,
     required Size size,
     String? text,
-    String fileName = 'lottonote',
+    String fileName = 'luckylog',
     double pixelRatio = 3.0,
   }) async {
     try {

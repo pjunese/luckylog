@@ -68,3 +68,21 @@ macos/.symlinks/
 *.apk
 *.aab
 *.ipa
+
+
+# Local build reports and compiler caches
+/android/build/
+/android/.kotlin/
+
+# Local environment files and private signing/server credentials
+.env
+.env.*
+!.env.example
+!.env.template
+functions/.runtimeconfig.json
+*.p8
+*.pem
+*.key
+**/*service-account*.json
+**/*serviceAccount*.json
+**/*firebase-adminsdk*.json

@@ -8,11 +8,11 @@ class NumberStat {
     required this.avgFreq,
   });
 
-  final int number;        // 번호 (1~45)
-  final int freq;          // 해당 구간 출현 횟수
-  final int lastAppeared;  // 마지막 출현 회차
-  final int absenceCount;  // 현재 연속 미출현 횟수
-  final double avgFreq;    // 해당 구간 평균 출현 횟수
+  final int number; // 번호 (1~45)
+  final int freq; // 해당 구간 출현 횟수
+  final int lastAppeared; // 마지막 출현 회차
+  final int absenceCount; // 현재 연속 미출현 횟수
+  final double avgFreq; // 해당 구간 평균 출현 횟수
 
   /// 평균 대비 출현 비율 (1.0 = 평균)
   double get freqRatio => avgFreq == 0 ? 0 : freq / avgFreq;
@@ -68,10 +68,15 @@ class RoundPattern {
     for (final n in numbers) {
       if (n <= 10) {
         map['1~10'] = map['1~10']! + 1;
-      } else if (n <= 20) map['11~20'] = map['11~20']! + 1;
-      else if (n <= 30) map['21~30'] = map['21~30']! + 1;
-      else if (n <= 40) map['31~40'] = map['31~40']! + 1;
-      else map['41~45'] = map['41~45']! + 1;
+      } else if (n <= 20) {
+        map['11~20'] = map['11~20']! + 1;
+      } else if (n <= 30) {
+        map['21~30'] = map['21~30']! + 1;
+      } else if (n <= 40) {
+        map['31~40'] = map['31~40']! + 1;
+      } else {
+        map['41~45'] = map['41~45']! + 1;
+      }
     }
     return map;
   }

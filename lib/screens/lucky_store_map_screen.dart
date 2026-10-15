@@ -1,3 +1,5 @@
+import '../widgets/app_snack_bar.dart';
+import '../services/store_map_link.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -249,51 +251,89 @@ class _LuckyStoreMapScreenState extends State<LuckyStoreMapScreen>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 판매점명
-            Text(
-              store['name'] as String,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 6),
-            Row(
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons.location_on_outlined,
-                  size: 14,
-                  color: Colors.grey,
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    store['address'] as String,
-                    style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                // 판매점명
+                Text(
+                  store['name'] as String,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.location_on_outlined,
+                      size: 14,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        store['address'] as String,
+                        style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // 등수별 당첨 배지
+                Row(
+                  children: [
+                    if (grade1 > 0) ...[
+                      _GradeBadge(grade: 1, count: grade1),
+                      const SizedBox(width: 8),
+                    ],
+                    if (grade2 > 0) _GradeBadge(grade: 2, count: grade2),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('카카오맵에서 보기'),
+                    onPressed: () async {
+                      final uri = storeMapLink(
+                        name: store['name'] as String,
+                        address: store['address'] as String,
+                        latitude: store['lat'] as num?,
+                        longitude: store['lng'] as num?,
+                      );
+                      var opened = false;
+                      try {
+                        opened = await launchUrl(
+                          uri,
+                          mode: LaunchMode.externalApplication,
+                        );
+                      } catch (_) {
+                        /* Report failure in the sheet below. */
+                      }
+                      if (!opened && mounted) {
+                        showAppSnackBar(
+                          context,
+                          content: Text('지도를 열지 못했어요. 잠시 후 다시 시도해주세요.'),
+                        );
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  '최근 1년(52회차) 기준',
+                  style: TextStyle(color: Colors.grey[400], fontSize: 11),
+                ),
               ],
             ),
-            const SizedBox(height: 16),
-            // 등수별 당첨 배지
-            Row(
-              children: [
-                if (grade1 > 0) ...[
-                  _GradeBadge(grade: 1, count: grade1),
-                  const SizedBox(width: 8),
-                ],
-                if (grade2 > 0) _GradeBadge(grade: 2, count: grade2),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '최근 1년(52회차) 기준',
-              style: TextStyle(color: Colors.grey[400], fontSize: 11),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -436,7 +476,10 @@ class _LuckyStoreMapScreenState extends State<LuckyStoreMapScreen>
               color: Colors.white,
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 8),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 8,
+                ),
               ],
             ),
             child: const Column(

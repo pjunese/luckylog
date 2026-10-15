@@ -1,6 +1,5 @@
 import 'dart:math';
 
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../db/lotto_database.dart';
@@ -38,7 +37,7 @@ class _StatsScreenState extends State<StatsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -57,7 +56,6 @@ class _StatsScreenState extends State<StatsScreen>
             Tab(text: '전체 시장'),
             Tab(text: '최근 흐름'),
             Tab(text: '연번 상세'),
-            Tab(text: '해석 보조'),
           ],
         ),
         Expanded(
@@ -67,7 +65,6 @@ class _StatsScreenState extends State<StatsScreen>
               _FrequencyTab(),
               _TrendTab(),
               _ConsecutiveDetailTab(),
-              _PatternTab(),
             ],
           ),
         ),
@@ -269,8 +266,7 @@ class _FrequencyTabState extends State<_FrequencyTab>
       children: [
         Row(
           children: [
-            Text('핫 · 콜드 번호',
-                style: Theme.of(context).textTheme.titleSmall),
+            Text('핫 · 콜드 번호', style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(width: 2),
             InkWell(
               onTap: _showHotColdInfo,
@@ -387,13 +383,15 @@ class _FrequencyTabState extends State<_FrequencyTab>
   }
 
   Widget _buildSortRow() {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('번호별 출현 횟수', style: Theme.of(context).textTheme.titleSmall),
-        const Spacer(),
+        const SizedBox(height: 4),
         DropdownButton<_SortMode>(
           value: _sort,
           isDense: true,
+          isExpanded: true,
           underline: const SizedBox(),
           items: const [
             DropdownMenuItem(value: _SortMode.byNumber, child: Text('번호순')),
@@ -433,10 +431,7 @@ class _FrequencyTabState extends State<_FrequencyTab>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '출현 빈도 TOP 10',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
+            Text('출현 빈도 TOP 10', style: Theme.of(context).textTheme.titleSmall),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
@@ -489,9 +484,9 @@ class _FrequencyTabState extends State<_FrequencyTab>
               children: [
                 CircleAvatar(
                   radius: 14,
-                  backgroundColor: _ballColor(stat.number).withValues(
-                    alpha: 0.45 + ratio * 0.55,
-                  ),
+                  backgroundColor: _ballColor(
+                    stat.number,
+                  ).withValues(alpha: 0.45 + ratio * 0.55),
                   child: Text(
                     '${stat.number}',
                     style: TextStyle(
@@ -510,9 +505,9 @@ class _FrequencyTabState extends State<_FrequencyTab>
                       minHeight: 10,
                       backgroundColor: Colors.grey.shade200,
                       valueColor: AlwaysStoppedAnimation(
-                        _ballColor(stat.number).withValues(
-                          alpha: 0.6 + ratio * 0.4,
-                        ),
+                        _ballColor(
+                          stat.number,
+                        ).withValues(alpha: 0.6 + ratio * 0.4),
                       ),
                     ),
                   ),
@@ -1168,22 +1163,21 @@ class _ConsecutiveDetailTabState extends State<_ConsecutiveDetailTab>
                   ),
                 ),
                 const SizedBox(height: 10),
-                Row(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: SegmentedButton<int>(
-                        showSelectedIcon: false,
-                        segments: const [
-                          ButtonSegment(value: 2, label: Text('2연번')),
-                          ButtonSegment(value: 3, label: Text('3연번')),
-                        ],
-                        selected: <int>{_sequenceLength},
-                        onSelectionChanged: (selection) {
-                          setState(() => _sequenceLength = selection.first);
-                        },
-                      ),
+                    SegmentedButton<int>(
+                      showSelectedIcon: false,
+                      segments: const [
+                        ButtonSegment(value: 2, label: Text('2연번')),
+                        ButtonSegment(value: 3, label: Text('3연번')),
+                      ],
+                      selected: <int>{_sequenceLength},
+                      onSelectionChanged: (selection) {
+                        setState(() => _sequenceLength = selection.first);
+                      },
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(height: 8),
                     SegmentedButton<bool>(
                       showSelectedIcon: false,
                       segments: const [
@@ -1200,9 +1194,16 @@ class _ConsecutiveDetailTabState extends State<_ConsecutiveDetailTab>
                 const SizedBox(height: 12),
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    final int crossAxisCount = constraints.maxWidth >= 440
-                        ? 3
-                        : 2;
+                    final textScaler = MediaQuery.textScalerOf(context);
+                    // Keep the balls and a four-digit count readable in each tile.
+                    final minTileWidth =
+                        22 +
+                        (_sequenceLength * 32 - 4) +
+                        textScaler.scale(11) * 5;
+                    final crossAxisCount =
+                        ((constraints.maxWidth + 8) / (minTileWidth + 8))
+                            .floor()
+                            .clamp(1, 3);
                     return GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -1211,7 +1212,10 @@ class _ConsecutiveDetailTabState extends State<_ConsecutiveDetailTab>
                         crossAxisCount: crossAxisCount,
                         mainAxisSpacing: 8,
                         crossAxisSpacing: 8,
-                        childAspectRatio: 2.4,
+                        mainAxisExtent: max(
+                          52,
+                          textScaler.scale(11) * 1.5 + 14,
+                        ),
                       ),
                       itemBuilder: (_, i) {
                         final entry = sortedEntries[i];
@@ -1248,7 +1252,9 @@ class _ConsecutiveDetailTabState extends State<_ConsecutiveDetailTab>
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
-                                    color: Theme.of(context).colorScheme.primary,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
                                   ),
                                 ),
                               ],
@@ -1266,601 +1272,6 @@ class _ConsecutiveDetailTabState extends State<_ConsecutiveDetailTab>
       ],
     );
   }
-}
-
-// ─────────────────────────────────────────
-// Tab 5: 해석 보조
-// ─────────────────────────────────────────
-class _PatternTab extends StatefulWidget {
-  const _PatternTab();
-
-  @override
-  State<_PatternTab> createState() => _PatternTabState();
-}
-
-class _PatternTabState extends State<_PatternTab>
-    with AutomaticKeepAliveClientMixin {
-  bool _loading = true;
-  Map<int, int> _oddEven = {};
-  Map<String, int> _sumDist = {};
-  Map<int, int> _endingDist = {};
-  int _totalRounds = 0;
-
-  int _coTargetNumber = 7;
-  int _coTopN = 5;
-  int _coRecentN = 10;
-  int _coFromRound = 1;
-  int _coToRound = 0;
-  int _coTargetAppearCount = 0;
-  bool _coLoading = false;
-  List<_CoOccurrenceItem> _coItems = const <_CoOccurrenceItem>[];
-
-  static const List<int> _coTopOptions = <int>[5, 10];
-  static const List<int> _coRecentOptions = <int>[3, 5, 10, 15];
-
-  @override
-  bool get wantKeepAlive => true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    final latest = await LottoDatabase.instance.getLatestRound();
-
-    final results = await Future.wait([
-      LottoDatabase.instance.getOddEvenDistribution(from: 1, to: latest),
-      LottoDatabase.instance.getSumDistribution(from: 1, to: latest),
-      LottoDatabase.instance.getEndingDigitDistribution(from: 1, to: latest),
-    ]);
-
-    if (!mounted) return;
-    setState(() {
-      _oddEven = results[0] as Map<int, int>;
-      _sumDist = results[1] as Map<String, int>;
-      _endingDist = results[2] as Map<int, int>;
-      _totalRounds = latest;
-      _loading = false;
-    });
-    await _loadCoOccurrence(latestRound: latest);
-  }
-
-  Future<void> _loadCoOccurrence({int? latestRound}) async {
-    final int latest = latestRound ?? _totalRounds;
-    if (latest <= 0) return;
-
-    final int from = (latest - _coRecentN + 1).clamp(1, latest);
-    setState(() {
-      _coLoading = true;
-      _coFromRound = from;
-      _coToRound = latest;
-    });
-
-    final results = await Future.wait([
-      LottoDatabase.instance.getTargetAppearCount(
-        targetNumber: _coTargetNumber,
-        from: from,
-        to: latest,
-      ),
-      LottoDatabase.instance.getCoOccurrenceTop(
-        targetNumber: _coTargetNumber,
-        from: from,
-        to: latest,
-        topN: _coTopN,
-      ),
-    ]);
-
-    if (!mounted) return;
-    final int targetAppearCount = results[0] as int;
-    final List<Map<String, dynamic>> rows =
-        results[1] as List<Map<String, dynamic>>;
-    final List<_CoOccurrenceItem> items = rows
-        .map(
-          (row) => _CoOccurrenceItem(
-            number: row['number'] as int,
-            freq: row['freq'] as int,
-          ),
-        )
-        .toList(growable: false);
-
-    setState(() {
-      _coTargetAppearCount = targetAppearCount;
-      _coItems = items;
-      _coLoading = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return ListView(
-      physics: const BouncingScrollPhysics(
-        parent: AlwaysScrollableScrollPhysics(),
-      ),
-      padding: const EdgeInsets.all(16),
-      children: [
-        _buildCoOccurrenceCard(),
-        const SizedBox(height: 16),
-        _buildOddEvenChart(),
-        const SizedBox(height: 16),
-        _buildSumDistChart(),
-        const SizedBox(height: 16),
-        _buildEndingDigitChart(),
-      ],
-    );
-  }
-
-  Widget _buildOddEvenChart() {
-    final int total = _oddEven.values.fold(0, (a, b) => a + b);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '홀짝 비율 분포 (전체 $_totalRounds회)',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '6개 번호 중 홀수 개수',
-              style: TextStyle(
-                fontSize: 11,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 180,
-              child: BarChart(
-                BarChartData(
-                  barGroups: List.generate(7, (i) {
-                    final int count = _oddEven[i] ?? 0;
-                    return BarChartGroupData(
-                      x: i,
-                      barRods: [
-                        BarChartRodData(
-                          toY: count.toDouble(),
-                          color: i == 3
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(
-                                  context,
-                                ).colorScheme.primary.withValues(alpha: 0.5),
-                          width: 28,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ],
-                    );
-                  }),
-                  titlesData: FlTitlesData(
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (v, _) {
-                          final i = v.toInt();
-                          return Text(
-                            '홀$i\n짝${6 - i}',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 9),
-                          );
-                        },
-                        reservedSize: 32,
-                      ),
-                    ),
-                    leftTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                  ),
-                  gridData: const FlGridData(show: false),
-                  borderData: FlBorderData(show: false),
-                  barTouchData: BarTouchData(
-                    touchTooltipData: BarTouchTooltipData(
-                      getTooltipItem: (group, _, rod, _) {
-                        final int count = rod.toY.toInt();
-                        final double pct = total == 0 ? 0 : count / total * 100;
-                        return BarTooltipItem(
-                          '$count회\n${pct.toStringAsFixed(1)}%',
-                          const TextStyle(color: Colors.white, fontSize: 11),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSumDistChart() {
-    final int total = _sumDist.values.fold(0, (a, b) => a + b);
-    final keys = _sumDist.keys.toList();
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('번호 합계 분포', style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 4),
-            Text(
-              '6개 번호의 합계 구간별 빈도',
-              style: TextStyle(
-                fontSize: 11,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 12),
-            ...keys.map((k) {
-              final int count = _sumDist[k] ?? 0;
-              final double pct = total == 0 ? 0 : count / total;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 60,
-                      child: Text(k, style: const TextStyle(fontSize: 12)),
-                    ),
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: pct,
-                          minHeight: 16,
-                          backgroundColor: Colors.grey.shade200,
-                          valueColor: AlwaysStoppedAnimation(
-                            Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    SizedBox(
-                      width: 44,
-                      child: Text(
-                        '$count회',
-                        style: const TextStyle(fontSize: 11),
-                        textAlign: TextAlign.right,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEndingDigitChart() {
-    final int total = _endingDist.values.fold(0, (a, b) => a + b);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('끝수(일의 자리) 분포', style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 4),
-            Text(
-              '예: 7, 17, 27, 37 → 끝수 7',
-              style: TextStyle(
-                fontSize: 11,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 160,
-              child: BarChart(
-                BarChartData(
-                  barGroups: List.generate(10, (i) {
-                    final int count = _endingDist[i] ?? 0;
-                    return BarChartGroupData(
-                      x: i,
-                      barRods: [
-                        BarChartRodData(
-                          toY: count.toDouble(),
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.secondary.withValues(alpha: 0.8),
-                          width: 22,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ],
-                    );
-                  }),
-                  titlesData: FlTitlesData(
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (v, _) => Text(
-                          '${v.toInt()}',
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                        reservedSize: 20,
-                      ),
-                    ),
-                    leftTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                  ),
-                  gridData: const FlGridData(show: false),
-                  borderData: FlBorderData(show: false),
-                  barTouchData: BarTouchData(
-                    touchTooltipData: BarTouchTooltipData(
-                      getTooltipItem: (group, _, rod, _) {
-                        final int count = rod.toY.toInt();
-                        final double pct = total == 0 ? 0 : count / total * 100;
-                        return BarTooltipItem(
-                          '끝수 ${group.x}: $count회\n${pct.toStringAsFixed(1)}%',
-                          const TextStyle(color: Colors.white, fontSize: 11),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCoOccurrenceCard() {
-    final int maxFreq = _coItems.isEmpty
-        ? 0
-        : _coItems.map((e) => e.freq).reduce(max);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('동반 출현 분석', style: Theme.of(context).textTheme.titleSmall),
-            const SizedBox(height: 6),
-            Text(
-              '기준 번호와 함께 자주 등장한 번호를 보여줍니다.',
-              style: TextStyle(
-                fontSize: 11,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _coTargetNumber,
-                    isDense: true,
-                    decoration: const InputDecoration(
-                      labelText: '기준 번호',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: List.generate(
-                      45,
-                      (i) => DropdownMenuItem<int>(
-                        value: i + 1,
-                        child: Text('${i + 1}번'),
-                      ),
-                    ),
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setState(() => _coTargetNumber = value);
-                      _loadCoOccurrence();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SegmentedButton<int>(
-                  showSelectedIcon: false,
-                  segments: _coTopOptions
-                      .map(
-                        (n) =>
-                            ButtonSegment<int>(value: n, label: Text('TOP $n')),
-                      )
-                      .toList(growable: false),
-                  selected: <int>{_coTopN},
-                  onSelectionChanged: (selection) {
-                    setState(() => _coTopN = selection.first);
-                    _loadCoOccurrence();
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: _coRecentOptions
-                  .map((n) {
-                    final bool selected = _coRecentN == n;
-                    final String label = '최근 $n회';
-                    return FilterChip(
-                      label: Text(label),
-                      selected: selected,
-                      onSelected: (_) {
-                        setState(() => _coRecentN = n);
-                        _loadCoOccurrence();
-                      },
-                    );
-                  })
-                  .toList(growable: false),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.calendar_month_outlined,
-                          size: 16,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            '집계범위 $_coFromRound~$_coToRound회',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.my_location_outlined,
-                          size: 16,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            '기준번호 등장 $_coTargetAppearCount회',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            if (_coLoading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_coTargetAppearCount == 0 || _coItems.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('해당 구간에 기준 번호 출현 데이터가 없습니다.'),
-              )
-            else
-              ..._coItems.map((item) {
-                final double ratio = maxFreq == 0 ? 0 : item.freq / maxFreq;
-                final double appearPct = _coTargetAppearCount == 0
-                    ? 0
-                    : item.freq / _coTargetAppearCount * 100;
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    children: [
-                      _SmallBall(number: item.number),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 64,
-                        child: Text(
-                          '${item.number}번',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value: ratio,
-                            minHeight: 12,
-                            backgroundColor: Colors.grey.shade200,
-                            valueColor: AlwaysStoppedAnimation(
-                              _ballColor(item.number),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 76,
-                        child: Text(
-                          '${item.freq}회 (${appearPct.toStringAsFixed(1)}%)',
-                          textAlign: TextAlign.right,
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CoOccurrenceItem {
-  const _CoOccurrenceItem({required this.number, required this.freq});
-
-  final int number;
-  final int freq;
 }
 
 // ─────────────────────────────────────────
@@ -2073,7 +1484,9 @@ class _RoundRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
             children: [
               Text(
                 '${pattern.round}회',
@@ -2082,7 +1495,6 @@ class _RoundRow extends StatelessWidget {
                   fontSize: 13,
                 ),
               ),
-              const SizedBox(width: 8),
               Text(
                 '합계 ${pattern.sum}  홀${pattern.oddCount}:짝${pattern.evenCount}  연번 ${pattern.consecutiveCount}쌍',
                 style: TextStyle(
@@ -2218,9 +1630,12 @@ class _ConsecutiveRoundsSheetState extends State<_ConsecutiveRoundsSheet> {
                       final row = _rows![i];
                       final round = row['round'] as int;
                       final nums = [
-                        row['num1'] as int, row['num2'] as int,
-                        row['num3'] as int, row['num4'] as int,
-                        row['num5'] as int, row['num6'] as int,
+                        row['num1'] as int,
+                        row['num2'] as int,
+                        row['num3'] as int,
+                        row['num4'] as int,
+                        row['num5'] as int,
+                        row['num6'] as int,
                       ]..sort();
 
                       return Padding(
@@ -2245,10 +1660,12 @@ class _ConsecutiveRoundsSheetState extends State<_ConsecutiveRoundsSheet> {
                                 spacing: 5,
                                 runSpacing: 4,
                                 children: [
-                                  ...nums.map((n) => _ConsecBall(
-                                        number: n,
-                                        highlight: seqSet.contains(n),
-                                      )),
+                                  ...nums.map(
+                                    (n) => _ConsecBall(
+                                      number: n,
+                                      highlight: seqSet.contains(n),
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -2265,10 +1682,7 @@ class _ConsecutiveRoundsSheetState extends State<_ConsecutiveRoundsSheet> {
 }
 
 class _ConsecBall extends StatelessWidget {
-  const _ConsecBall({
-    required this.number,
-    required this.highlight,
-  });
+  const _ConsecBall({required this.number, required this.highlight});
 
   final int number;
   final bool highlight;

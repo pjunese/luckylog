@@ -35,7 +35,7 @@ void main() {
     expect(find.text('5등'), findsOneWidget);
     expect(find.text('3개 적중'), findsOneWidget);
     expect(find.text('5,000원'), findsOneWidget);
-    expect(find.text('로또노트'), findsOneWidget);
+    expect(find.text('럭키로그'), findsOneWidget);
   });
 
   testWidgets('낙첨 카드는 등수 대신 안내 문구를 보여준다', (tester) async {

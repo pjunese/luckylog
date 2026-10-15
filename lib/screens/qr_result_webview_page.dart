@@ -1,6 +1,9 @@
+import '../widgets/app_snack_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+
+import '../services/lotto_qr_policy.dart';
 
 class QRResultWebViewPage extends StatefulWidget {
   const QRResultWebViewPage({super.key, required this.initialUri});
@@ -23,6 +26,12 @@ class _QRResultWebViewPageState extends State<QRResultWebViewPage> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
+          onNavigationRequest: (request) {
+            final uri = Uri.tryParse(request.url);
+            return uri != null && LottoQrPolicy.allowsNavigation(uri)
+                ? NavigationDecision.navigate
+                : NavigationDecision.prevent;
+          },
           onPageStarted: (_) {
             if (!mounted) return;
             setState(() {
@@ -37,27 +46,31 @@ class _QRResultWebViewPageState extends State<QRResultWebViewPage> {
             });
           },
           onWebResourceError: (error) {
-            if (!mounted) return;
+            if (!mounted || error.isForMainFrame == false) return;
             setState(() {
               _isLoading = false;
               _lastError = error.description;
             });
           },
         ),
-      )
-      ..loadRequest(widget.initialUri);
+      );
+    if (LottoQrPolicy.allowsNavigation(widget.initialUri)) {
+      _controller.loadRequest(widget.initialUri);
+    } else {
+      _isLoading = false;
+      _lastError = '허용되지 않은 주소입니다.';
+    }
   }
 
   Future<void> _openExternal() async {
+    if (!LottoQrPolicy.allowsNavigation(widget.initialUri)) return;
     final bool launched = await launchUrl(
       widget.initialUri,
       mode: LaunchMode.externalApplication,
     );
     if (!mounted) return;
     if (!launched) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('외부 브라우저를 열지 못했습니다.')));
+      showAppSnackBar(context, content: Text('외부 브라우저를 열지 못했습니다.'));
     }
   }
 

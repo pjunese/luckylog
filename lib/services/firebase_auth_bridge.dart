@@ -2,6 +2,8 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
+import 'user_service.dart';
+
 /// 카카오/애플 로그인을 Firebase Auth 세션으로 연결한다.
 ///
 /// Firestore 보안 규칙이 `request.auth.uid == accountKey` 로 잠겨 있어서,
@@ -72,6 +74,7 @@ class FirebaseAuthBridge {
     // 다른 계정으로 남아있는 세션은 정리하고 새로 로그인한다.
     if (isSignedIn) {
       debugPrint('[FirebaseAuth] 다른 계정 세션 정리: $uid → $accountKey');
+      await UserService.detachNotifications();
       await signOut();
     }
 
@@ -82,11 +85,5 @@ class FirebaseAuthBridge {
     return signIn(provider: provider, credential: credential);
   }
 
-  static Future<void> signOut() async {
-    try {
-      await FirebaseAuth.instance.signOut();
-    } catch (e) {
-      debugPrint('[FirebaseAuth] 로그아웃 실패: $e');
-    }
-  }
+  static Future<void> signOut() => FirebaseAuth.instance.signOut();
 }

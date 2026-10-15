@@ -99,7 +99,10 @@ class NotificationRouter {
     return target;
   }
 
+  /// Account transitions must not consume the previous account's destination.
+  static void clearPending() => _pending = null;
+
   /// 테스트용: 보관 상태 초기화.
   @visibleForTesting
-  static void reset() => _pending = null;
+  static void reset() => clearPending();
 }

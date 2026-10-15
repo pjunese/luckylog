@@ -1,31 +1,42 @@
+import '../widgets/app_snack_bar.dart';
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../core/lotto_palette.dart';
 import '../db/lotto_database.dart';
 import '../models/draw_result.dart';
-import '../models/number_set.dart';
 import '../models/purchase_record.dart';
 import 'lucky_store_map_screen.dart';
-import 'qr_result_webview_page.dart';
+import '../models/scanned_ticket.dart';
+import '../models/purchase_summary.dart';
+import '../models/purchase_insights.dart';
+import '../models/purchase_calendar.dart';
+import '../services/purchase_insights_controller.dart';
+import '../widgets/monthly_record_card.dart';
+import 'purchase_review_page.dart';
 import 'qr_scan_page.dart';
 
 class HomeTab extends StatefulWidget {
   const HomeTab({
     super.key,
-    required this.savedSets,
     required this.purchaseHistory,
-    required this.onSaveSet,
-    required this.onAddPurchaseHistory,
+    required this.onSaveQrBatch,
+    required this.onMarkResultsChecked,
     required this.onNavigateToVault,
+    this.database,
+    this.insights,
+    this.onOpenMonthlyRecords,
   });
 
-  final List<NumberSet> savedSets;
   final List<PurchaseRecord> purchaseHistory;
-  final Future<void> Function(List<List<int>>) onSaveSet;
-  final Future<void> Function(List<List<int>>, int, String)
-  onAddPurchaseHistory;
+  final Future<QrBatchSaveResult> Function(List<ScannedTicket>) onSaveQrBatch;
+  final Future<void> Function(List<int>) onMarkResultsChecked;
   final void Function(int subTabIndex) onNavigateToVault;
+  final LottoDatabase? database;
+  final PurchaseInsightsController? insights;
+  final VoidCallback? onOpenMonthlyRecords;
 
   @override
   State<HomeTab> createState() => _HomeTabState();
@@ -35,60 +46,107 @@ class _HomeTabState extends State<HomeTab> {
   DrawResult? _latestDraw;
   bool _loadingDraw = true;
   Map<String, dynamic>? _serviceStats;
+  Map<int, DrawResult> _draws = {};
+  int? _summaryRound;
+  bool _openingScanner = false;
+  bool _openingReview = false;
+  int _drawLoadGeneration = 0;
+  int _statsLoadGeneration = 0;
+  late final String? _owner;
+  final _reviewRevision = ValueNotifier<int>(0);
+  late final PurchaseInsightsController _insights;
+  LottoDatabase get _database => widget.database ?? LottoDatabase.instance;
+
+  bool get _ownsView => mounted && _database.accountKey == _owner;
 
   @override
   void initState() {
     super.initState();
-    _loadLatestDraw();
-    _loadServiceStats();
+    _owner = _database.accountKey;
+    _insights =
+        widget.insights ?? PurchaseInsightsController(database: _database);
+    _database.drawRevision.addListener(_onDrawChanged);
+    unawaited(_loadLatestDraw());
+    unawaited(_loadServiceStats());
+  }
+
+  @override
+  void didUpdateWidget(HomeTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.purchaseHistory != widget.purchaseHistory) {
+      final previousIds = oldWidget.purchaseHistory.map((r) => r.id).toSet();
+      if (widget.purchaseHistory.any((r) => !previousIds.contains(r.id))) {
+        _summaryRound = null;
+      }
+      unawaited(_loadLatestDraw());
+    }
+  }
+
+  @override
+  void dispose() {
+    _database.drawRevision.removeListener(_onDrawChanged);
+    _reviewRevision.dispose();
+    if (widget.insights == null) _insights.dispose();
+    super.dispose();
+  }
+
+  void _onDrawChanged() {
+    if (!_ownsView) return;
+    unawaited(_loadLatestDraw());
+    unawaited(_loadServiceStats());
   }
 
   Future<void> _loadServiceStats() async {
+    final generation = ++_statsLoadGeneration;
     try {
-      final latestRound = await LottoDatabase.instance.getLatestRound();
-      if (latestRound <= 0) return;
+      final latestRound = await _database.getLatestRound();
+      if (!_ownsView ||
+          generation != _statsLoadGeneration ||
+          latestRound <= 0) {
+        return;
+      }
       final doc = await FirebaseFirestore.instance
           .collection('service_stats')
           .doc(latestRound.toString())
-          .get();
-      if (!mounted) return;
-      if (doc.exists) {
-        setState(() => _serviceStats = doc.data());
-      }
+          .get()
+          .timeout(const Duration(seconds: 10));
+      if (!_ownsView || generation != _statsLoadGeneration) return;
+      setState(() => _serviceStats = doc.exists ? doc.data() : null);
     } catch (e) {
-      // 부가 정보라 실패해도 화면은 그대로 둔다 (사용자 알림 없음)
       debugPrint('[HomeTab] 서비스 통계 로드 실패: $e');
     }
   }
 
   Future<void> _loadLatestDraw() async {
+    final generation = ++_drawLoadGeneration;
+    final rounds = widget.purchaseHistory.map((r) => r.round).toSet();
     try {
-      final int round = await LottoDatabase.instance.getLatestRound();
-      final Map<String, dynamic>? row = await LottoDatabase.instance
-          .getDrawResult(round);
-      if (!mounted) return;
-      if (row != null) {
-        setState(() {
-          _latestDraw = DrawResult(
-            round: row['round'] as int,
-            winningNumbers: [
-              row['num1'] as int,
-              row['num2'] as int,
-              row['num3'] as int,
-              row['num4'] as int,
-              row['num5'] as int,
-              row['num6'] as int,
-            ],
-            bonusNumber: row['bonus'] as int,
-            drawDate: row['draw_date'] as String? ?? '',
-          );
-          _loadingDraw = false;
-        });
-      } else {
-        if (mounted) setState(() => _loadingDraw = false);
+      final latest = await _database.getLatestRound();
+      if (latest > 0) rounds.add(latest);
+      final draws = await _database.getDrawResultsForRounds(rounds);
+      if (!_ownsView || generation != _drawLoadGeneration) return;
+      setState(() {
+        final previousLatest = _latestDraw?.round;
+        _latestDraw = draws[latest];
+        _draws = draws;
+        _loadingDraw = false;
+        // New results take focus once; ordinary updates preserve the user's round selection.
+        if (_summaryRound == null || previousLatest != _latestDraw?.round) {
+          _summaryRound =
+              PurchaseSummary.defaultRound(
+                records: widget.purchaseHistory,
+                draws: _draws,
+                knownLatestRound: latest,
+              ) ??
+              _upcomingRound();
+        }
+      });
+      _reviewRevision.value++;
+    } catch (e) {
+      if (_ownsView && generation == _drawLoadGeneration) {
+        setState(() => _loadingDraw = false);
       }
-    } catch (_) {
-      if (mounted) setState(() => _loadingDraw = false);
+      debugPrint('[HomeTab] 추첨 정보 로드 실패: $e');
     }
   }
 
@@ -121,160 +179,82 @@ class _HomeTabState extends State<HomeTab> {
     return '추첨 진행 중';
   }
 
-  Uri? _buildQROpenUri(String raw) {
-    final String input = raw.trim();
-    if (input.isEmpty) return null;
-
-    final Uri? parsed = Uri.tryParse(input);
-    if (parsed != null && parsed.hasScheme) {
-      if (parsed.host.contains('dhlottery.co.kr')) {
-        return parsed.replace(
-          scheme: 'https',
-          port: parsed.hasPort && parsed.port != 80 ? parsed.port : null,
-        );
-      }
-      return null;
-    }
-
-    final RegExp vTokenRegExp = RegExp(r'(?:^|[?&])v=([A-Za-z0-9_-]+)');
-    final Match? tokenMatch = vTokenRegExp.firstMatch(input);
-    if (tokenMatch != null) {
-      final String token = tokenMatch.group(1)!;
-      return Uri.parse('https://m.dhlottery.co.kr/qr.do?method=winQr&v=$token');
-    }
-
-    if (RegExp(r'^[A-Za-z0-9_-]{8,}$').hasMatch(input)) {
-      return Uri.parse('https://m.dhlottery.co.kr/qr.do?method=winQr&v=$input');
-    }
-
-    return null;
-  }
-
-  int? _parseQrRound(String raw) {
-    try {
-      final Uri? uri = Uri.tryParse(raw);
-      final String v = uri?.queryParameters['v'] ?? raw;
-      final Match? match = RegExp(r'^(\d{4})').firstMatch(v);
-      return match != null ? int.tryParse(match.group(1)!) : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  List<List<int>>? _parseQrNumbers(String raw) {
-    try {
-      final Uri? uri = Uri.tryParse(raw);
-      final String v = uri?.queryParameters['v'] ?? raw;
-      final RegExp pattern = RegExp(
-        r'm(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})',
-      );
-      final Iterable<RegExpMatch> matches = pattern.allMatches(v);
-      final List<List<int>> games = matches
-          .map(
-            (m) => [
-              int.parse(m.group(1)!),
-              int.parse(m.group(2)!),
-              int.parse(m.group(3)!),
-              int.parse(m.group(4)!),
-              int.parse(m.group(5)!),
-              int.parse(m.group(6)!),
-            ],
-          )
-          .toList();
-      return games.isEmpty ? null : games;
-    } catch (_) {
-      return null;
-    }
+  int _upcomingRound() {
+    final koreanNow = DateTime.now().toUtc().add(const Duration(hours: 9));
+    final day = DateTime.utc(koreanNow.year, koreanNow.month, koreanNow.day);
+    final days = day.difference(DateTime.utc(2002, 12, 7)).inDays;
+    final calendarRound = days < 0 ? 1 : ((days + 6) ~/ 7) + 1;
+    final afterLatest = (_latestDraw?.round ?? 0) + 1;
+    return calendarRound > afterLatest ? calendarRound : afterLatest;
   }
 
   Future<void> _openQrScanner() async {
-    final String? result = await Navigator.of(
-      context,
-    ).push<String>(MaterialPageRoute(builder: (_) => const QRScanPage()));
-    if (!mounted || result == null) return;
-
-    final Uri? uri = _buildQROpenUri(result);
-    if (uri == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('유효한 동행복권 QR 코드가 아닙니다.')));
-      return;
-    }
-
-    final List<List<int>>? games = _parseQrNumbers(result);
-    final int? round = _parseQrRound(result);
-
-    await _openInAppQrResult(uri);
-
-    if (games != null && mounted) {
-      final bool? save = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('구매내역 저장'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                round != null
-                    ? '$round회 구매 번호를 구매내역에 저장할까요?'
-                    : '스캔한 번호를 구매내역에 저장할까요?',
-              ),
-              const SizedBox(height: 12),
-              ...games.map(
-                (g) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Wrap(
-                    spacing: 4,
-                    children: g
-                        .map(
-                          (n) => CircleAvatar(
-                            radius: 12,
-                            backgroundColor: lottoBallColor(n),
-                            child: Text(
-                              '$n',
-                              style: TextStyle(
-                                color: lottoBallTextColor(n),
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-              ),
-            ],
+    if (!_ownsView || _openingScanner) return;
+    setState(() => _openingScanner = true);
+    QrBatchSaveResult? saved;
+    try {
+      final known = await _database.getKnownQrFingerprints();
+      if (!mounted || !_ownsView) return;
+      await Navigator.of(context).push<List<ScannedTicket>>(
+        MaterialPageRoute(
+          builder: (_) => QRScanPage(
+            knownFingerprints: known,
+            onSave: (tickets) async {
+              if (!_ownsView) throw StateError('계정이 변경되었습니다. 다시 로그인해주세요.');
+              saved = await widget.onSaveQrBatch(tickets);
+            },
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('저장 안 함'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('저장'),
-            ),
-          ],
         ),
       );
-      if (save == true) {
-        await widget.onAddPurchaseHistory(games, round ?? 0, 'qr');
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('구매내역에 저장됐습니다.')));
-        }
+      if (!_ownsView || saved == null) return;
+      final result = saved!;
+      final notes = <String>[
+        '${result.insertedCount}장 등록 완료',
+        if (result.duplicateCount > 0) '이미 등록된 ${result.duplicateCount}장 제외',
+        if (result.deletedCount > 0)
+          '이전에 삭제한 ${result.deletedCount}장 · 구매내역 휴지통에서 복원 가능',
+      ];
+      await _loadLatestDraw();
+      if (!mounted || !_ownsView) return;
+      showAppSnackBar(context, content: Text(notes.join(' · ')));
+    } catch (e) {
+      if (mounted && _ownsView) {
+        showAppSnackBar(
+          context,
+          content: Text('QR 등록 화면을 열지 못했습니다. 다시 시도해주세요.'),
+        );
       }
+    } finally {
+      if (_ownsView) setState(() => _openingScanner = false);
     }
   }
 
-  Future<void> _openInAppQrResult(Uri uri) async {
-    if (!mounted) return;
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => QRResultWebViewPage(initialUri: uri)),
-    );
+  Future<void> _openPurchaseReview() async {
+    if (!_ownsView || _openingReview) return;
+    final round = _summaryRound;
+    if (round == null) return;
+    _openingReview = true;
+    try {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => ValueListenableBuilder<int>(
+            valueListenable: _reviewRevision,
+            builder: (_, revision, _) => PurchaseReviewPage(
+              round: round,
+              records: widget.purchaseHistory,
+              draws: _draws,
+              knownLatestRound: _latestDraw?.round,
+              onMarkChecked: (ids) async {
+                if (!_ownsView) throw StateError('계정이 변경되었습니다.');
+                await widget.onMarkResultsChecked(ids);
+              },
+            ),
+          ),
+        ),
+      );
+    } finally {
+      _openingReview = false;
+    }
   }
 
   /// 최근 구매 내역을 회차별로 묶어서 최대 3회차 반환
@@ -341,8 +321,10 @@ class _HomeTabState extends State<HomeTab> {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      Wrap(
+                        spacing: 16,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -376,6 +358,7 @@ class _HomeTabState extends State<HomeTab> {
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 const Icon(
                                   Icons.timer_outlined,
@@ -383,12 +366,14 @@ class _HomeTabState extends State<HomeTab> {
                                   size: 14,
                                 ),
                                 const SizedBox(width: 4),
-                                Text(
-                                  '다음 추첨 ${_getDDay()}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
+                                Flexible(
+                                  child: Text(
+                                    '다음 추첨 ${_getDDay()}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -397,20 +382,40 @@ class _HomeTabState extends State<HomeTab> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      Wrap(
-                        alignment: WrapAlignment.center,
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          ..._latestDraw!.winningNumbers.map(
-                            (n) => _HomeLottoBall(number: n),
-                          ),
-                          const _HomeBonus(),
-                          _HomeLottoBall(
-                            number: _latestDraw!.bonusNumber,
-                            isBonus: true,
-                          ),
-                        ],
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final minSize =
+                              (MediaQuery.textScalerOf(context).scale(13) + 12)
+                                  .clamp(28.0, 38.0);
+                          final size = ((constraints.maxWidth - 48) / 7).clamp(
+                            minSize,
+                            38.0,
+                          );
+                          return Wrap(
+                            alignment: WrapAlignment.center,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 4,
+                            runSpacing: 8,
+                            children: [
+                              ..._latestDraw!.winningNumbers.map(
+                                (n) => _HomeLottoBall(number: n, size: size),
+                              ),
+                              // The bonus marker must stay with its ball when wrapping.
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const _HomeBonus(),
+                                  const SizedBox(width: 4),
+                                  _HomeLottoBall(
+                                    number: _latestDraw!.bonusNumber,
+                                    isBonus: true,
+                                    size: size,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -421,7 +426,7 @@ class _HomeTabState extends State<HomeTab> {
 
         // ── QR 스캔 메인 CTA ──────────────────────────────────
         GestureDetector(
-          onTap: _openQrScanner,
+          onTap: _openingScanner ? null : _openQrScanner,
           child: Container(
             decoration: BoxDecoration(
               color: cs.primaryContainer,
@@ -453,7 +458,7 @@ class _HomeTabState extends State<HomeTab> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'QR 당첨 조회',
+                        '복권 여러 장 등록',
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
@@ -462,7 +467,7 @@ class _HomeTabState extends State<HomeTab> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '복권 QR을 카메라로 스캔하세요',
+                        '연속 스캔하거나 사진에서 QR을 읽어보세요',
                         style: TextStyle(
                           fontSize: 13,
                           color: cs.onPrimaryContainer.withValues(alpha: 0.65),
@@ -480,6 +485,30 @@ class _HomeTabState extends State<HomeTab> {
           ),
         ),
 
+        const SizedBox(height: 16),
+
+        ListenableBuilder(
+          listenable: _insights,
+          builder: (context, _) {
+            if (_insights.loading) return const SizedBox.shrink();
+            if (_insights.failed) {
+              return TextButton.icon(
+                onPressed: () => _insights.refresh(retryPrizes: true),
+                icon: const Icon(Icons.refresh),
+                label: const Text('이번 달 기록 다시 불러오기'),
+              );
+            }
+            return MonthlyRecordCard(
+              summary: CalendarMonthSummary(
+                insights: _insights.value,
+                month: koreanCalendarDay(),
+              ),
+              onOpenRecords:
+                  widget.onOpenMonthlyRecords ??
+                  () => widget.onNavigateToVault(1),
+            );
+          },
+        ),
         const SizedBox(height: 16),
 
         // ── 서비스 통계 카드 ──────────────────────────────────
@@ -554,7 +583,7 @@ class _HomeTabState extends State<HomeTab> {
     final hasWinner1 = ((winners['1'] as num?)?.toInt() ?? 0) > 0;
     final totalWinners = winners.values.whereType<num>().fold<int>(
       0,
-      (sum, v) => sum + v.toInt(),
+      (total, v) => total + v.toInt(),
     );
 
     return Container(
@@ -673,7 +702,10 @@ class _HomeTabState extends State<HomeTab> {
         else
           ...summary.map(
             (entry) => GestureDetector(
-              onTap: () => widget.onNavigateToVault(1),
+              onTap: () {
+                setState(() => _summaryRound = entry.key);
+                _openPurchaseReview();
+              },
               child: Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 decoration: BoxDecoration(
@@ -744,18 +776,23 @@ class _HomeTabState extends State<HomeTab> {
 
 /// 홈 헤더용 로또볼
 class _HomeLottoBall extends StatelessWidget {
-  const _HomeLottoBall({required this.number, this.isBonus = false});
+  const _HomeLottoBall({
+    required this.number,
+    this.isBonus = false,
+    this.size = 38,
+  });
 
   final int number;
   final bool isBonus;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     final Color ballColor = lottoBallColor(number);
     final Color textColor = lottoBallTextColor(number);
     return Container(
-      width: 38,
-      height: 38,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: ballColor,
@@ -791,15 +828,11 @@ class _HomeBonus extends StatelessWidget {
     return SizedBox(
       width: 20,
       height: 38,
-      child: Center(
-        child: Text(
-          '+',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.5),
-            fontSize: 18,
-            fontWeight: FontWeight.w300,
-          ),
-        ),
+      child: Icon(
+        Icons.add,
+        size: 18,
+        color: Colors.white.withValues(alpha: 0.5),
+        semanticLabel: '보너스 번호',
       ),
     );
   }

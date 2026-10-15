@@ -1,0 +1,11 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    { "name": "럭키로그 DEV", "request": "launch", "type": "dart",
+      "program": "lib/main.dart", "args": ["--flavor", "dev"] },
+    { "name": "럭키로그 iOS 배포 구성", "request": "launch", "type": "dart",
+      "program": "lib/main.dart", "args": ["--flavor", "Runner"] },
+    { "name": "럭키로그 Android 배포 구성", "request": "launch", "type": "dart",
+      "program": "lib/main.dart", "args": ["--flavor", "prod"] }
+  ]
+}

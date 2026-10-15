@@ -550,48 +550,59 @@ class _DrawResultItem extends StatelessWidget {
               : BorderSide.none,
         ),
         color: isSelected
-            ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3)
+            ? Theme.of(
+                context,
+              ).colorScheme.primaryContainer.withValues(alpha: 0.3)
             : Theme.of(context).colorScheme.surfaceContainerLowest,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 52,
-                child: Column(
+          child: LayoutBuilder(
+            builder: (context, box) {
+              final heading = Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  Text(
+                    '$round회',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    date.substring(2),
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  ),
+                ],
+              );
+              final balls = Wrap(
+                spacing: 5,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  for (final n in numbers) MiniLottoBall(number: n),
+                  const Text(
+                    '+',
+                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                  MiniLottoBall(number: bonus, isBonus: true),
+                ],
+              );
+              if (box.maxWidth < 440 ||
+                  MediaQuery.textScalerOf(context).scale(14) > 20) {
+                return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$round회',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      date.substring(2),
-                      style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: numbers
-                      .map((n) => MiniLottoBall(number: n))
-                      .toList(),
-                ),
-              ),
-              const SizedBox(width: 6),
-              const Text(
-                '+',
-                style: TextStyle(color: Colors.grey, fontSize: 13),
-              ),
-              const SizedBox(width: 6),
-              MiniLottoBall(number: bonus, isBonus: true),
-            ],
+                  children: [heading, const SizedBox(height: 8), balls],
+                );
+              }
+              return Row(
+                children: [
+                  SizedBox(width: 140, child: heading),
+                  const SizedBox(width: 12),
+                  Expanded(child: balls),
+                ],
+              );
+            },
           ),
         ),
       ),

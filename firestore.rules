@@ -1,50 +1,82 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // 로또 당첨번호 — 누구나 읽기 가능 (공개 데이터), 쓰기는 Cloud Functions만
-    match /lotto_draws/{round} {
-      allow read: if true;
-      allow write: if false;
+    function owns(uid) {
+      return request.auth != null && request.auth.uid == uid;
     }
 
-    // 최신 회차 메타 — 누구나 읽기 가능
-    match /meta/{doc} {
-      allow read: if true;
-      allow write: if false;
+    match /lotto_draws/{round} { allow read: if true; }
+    match /meta/latest { allow read: if true; }
+    match /service_stats/{round} { allow read: if true; }
+
+    // registerUser (Admin SDK) owns registration, numbering and identity fields.
+    match /users/{uid} {
+      allow read: if owns(uid);
+      allow update: if owns(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'nickname', 'lastLoginAt', 'updatedAt', 'schemaVersion',
+          'fcmToken', 'fcmTokenUpdatedAt'
+        ])
+        && (!('nickname' in request.resource.data) ||
+          (request.resource.data.nickname is string &&
+           request.resource.data.nickname.size() > 0 && request.resource.data.nickname.size() <= 20))
+        && (!('lastLoginAt' in request.resource.data) || request.resource.data.lastLoginAt is timestamp)
+        && (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp)
+        && (!('schemaVersion' in request.resource.data) ||
+          (request.resource.data.schemaVersion is int && request.resource.data.schemaVersion >= 1))
+        // Legacy shared tokens may be removed, never set or changed by clients.
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['fcmToken']) ||
+          !('fcmToken' in request.resource.data))
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['fcmTokenUpdatedAt']) ||
+          !('fcmTokenUpdatedAt' in request.resource.data));
+
+      match /devices/{deviceId} {
+        allow read, delete: if owns(uid);
+        allow create, update: if owns(uid)
+          && exists(/databases/$(database)/documents/users/$(uid))
+          && request.resource.data.keys().hasOnly(['token', 'enabled', 'updatedAt'])
+          && request.resource.data.enabled is bool
+          && ((!request.resource.data.enabled && !('token' in request.resource.data)) ||
+            (request.resource.data.token is string && request.resource.data.token.size() > 0
+              && request.resource.data.token.size() <= 4096))
+          && request.resource.data.updatedAt == request.time;
+      }
+
+      match /{collection}/{recordId} {
+        function isRecord() {
+          return collection in ['number_sets', 'purchase_history'];
+        }
+        function validRecord() {
+          return (!('deleted' in request.resource.data) || request.resource.data.deleted is bool)
+            && request.resource.data.updatedAt == request.time;
+        }
+        allow read: if owns(uid) && isRecord();
+        // Existing payloads stay compatible. Deletions are durable tombstones.
+        allow create: if owns(uid) && isRecord() && validRecord()
+          && exists(/databases/$(database)/documents/users/$(uid));
+        allow update: if owns(uid) && isRecord() && validRecord()
+          && (resource.data.get('deleted', false) != true ||
+            request.resource.data.get('deleted', false) == true);
+      }
     }
 
-    // 회차별 서비스 집계 (참여자 수 / 세트 수 / 당첨자 수)
-    // 개인 식별 정보 없이 합계만 담기며 홈 화면 카드가 읽는다.
-    // 규칙이 없으면 전체 차단에 걸려 카드가 조용히 사라진다.
-    match /service_stats/{round} {
-      allow read: if true;
-      allow write: if false; // Cloud Functions만 기록
-    }
-
-    // 사용자 데이터 — 본인만 읽기/쓰기
-    //
-    // uid는 카카오/애플 로그인을 서버(createAuthToken)에서 검증한 뒤
-    // 발급한 커스텀 토큰의 값이며, accountKey와 동일한 형식이다.
-    // (kakao:{id} / apple:{sub})
-    //
-    // 주의: 부모 문서 규칙은 하위 컬렉션에 상속되지 않는다.
-    // {document=**} 가 없으면 number_sets / purchase_history 가
-    // 맨 아래 전체 차단 규칙에 걸려 백업이 조용히 실패한다.
-    match /users/{accountKey}/{document=**} {
-      allow read, write: if request.auth != null
-                         && request.auth.uid == accountKey;
-    }
-
-    // 피드백 — 누구나 쓰기 가능, 읽기는 관리자만 (Console에서만 열람)
+    // Preserve guest feedback while bounding payload size and reported identity.
     match /feedback/{docId} {
-      allow create: if true;
-      allow read, update, delete: if false;
+      allow create: if request.resource.data.keys().hasOnly([
+          'category', 'text', 'userNumber', 'provider', 'createdAt'
+        ])
+        && request.resource.data.category in ['일반 의견', '버그 신고', '기능 요청', '기타']
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 500
+        && request.resource.data.userNumber is int
+        && request.resource.data.createdAt == request.time
+        && ((request.auth == null && request.resource.data.provider == 'guest'
+            && request.resource.data.userNumber == 0)
+          || (request.auth != null
+            && request.resource.data.provider == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.provider
+            && request.resource.data.userNumber == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userNumber));
     }
 
-    // 나머지 모두 차단
-    match /{document=**} {
-      allow read, write: if false;
-    }
+    match /{document=**} { allow read, write: if false; }
   }
 }

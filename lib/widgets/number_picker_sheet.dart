@@ -1,3 +1,4 @@
+import 'app_snack_bar.dart';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -31,8 +32,9 @@ class _NumberPickerSheetState extends State<NumberPickerSheet> {
 
   void _toggleNumber(int number, bool shouldSelect) {
     if (shouldSelect && _selected.length >= widget.maxSelection) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('번호는 최대 ${widget.maxSelection}개까지 선택할 수 있습니다.')),
+      showAppSnackBar(
+        context,
+        content: Text('번호는 최대 ${widget.maxSelection}개까지 선택할 수 있습니다.'),
       );
       return;
     }
@@ -79,77 +81,92 @@ class _NumberPickerSheetState extends State<NumberPickerSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '${widget.gameIndex + 1}게임 번호 선택',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '1~45 중 ${widget.maxSelection}개 선택',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Text('${_selected.length}/${widget.maxSelection}'),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: _pickRandom,
-                icon: const Icon(Icons.casino_outlined),
-                label: const Text('랜덤'),
-              ),
-              TextButton.icon(
-                onPressed: _clear,
-                icon: const Icon(Icons.clear_all),
-                label: const Text('초기화'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
           Expanded(
-            child: GridView.builder(
-              itemCount: 45,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 5,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                childAspectRatio: 2.1,
-              ),
-              itemBuilder: (context, index) {
-                final int number = index + 1;
-                final bool isSelected = _selected.contains(number);
-                final Color ballColor = lottoBallColor(number);
-                final Color textColor = isSelected
-                    ? lottoBallTextColor(number)
-                    : Theme.of(context).colorScheme.onSurface;
-                return GestureDetector(
-                  onTap: () => _toggleNumber(number, !isSelected),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 120),
-                    decoration: BoxDecoration(
-                      color: isSelected ? ballColor : Colors.transparent,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: isSelected
-                            ? ballColor
-                            : Theme.of(context).colorScheme.outlineVariant,
-                        width: 1.5,
+            child: CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${widget.gameIndex + 1}게임 번호 선택',
+                        style: Theme.of(context).textTheme.titleLarge,
                       ),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      number.toString(),
-                      style: TextStyle(
-                        color: textColor,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
+                      const SizedBox(height: 8),
+                      Text(
+                        '1~45 중 ${widget.maxSelection}개 선택',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text('${_selected.length}/${widget.maxSelection}'),
+                          TextButton.icon(
+                            onPressed: _pickRandom,
+                            icon: const Icon(Icons.casino_outlined),
+                            label: const Text('랜덤'),
+                          ),
+                          TextButton.icon(
+                            onPressed: _clear,
+                            icon: const Icon(Icons.clear_all),
+                            label: const Text('초기화'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                    ],
+                  ),
+                ),
+                SliverGrid.builder(
+                  itemCount: 45,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 5,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    mainAxisExtent: max(
+                      48,
+                      MediaQuery.textScalerOf(context).scale(15) + 20,
                     ),
                   ),
-                );
-              },
+                  itemBuilder: (context, index) {
+                    final int number = index + 1;
+                    final bool isSelected = _selected.contains(number);
+                    final Color ballColor = lottoBallColor(number);
+                    final Color textColor = isSelected
+                        ? lottoBallTextColor(number)
+                        : Theme.of(context).colorScheme.onSurface;
+                    return GestureDetector(
+                      onTap: () => _toggleNumber(number, !isSelected),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 120),
+                        decoration: BoxDecoration(
+                          color: isSelected ? ballColor : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isSelected
+                                ? ballColor
+                                : Theme.of(context).colorScheme.outlineVariant,
+                            width: 1.5,
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          number.toString(),
+                          style: TextStyle(
+                            color: textColor,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 12),

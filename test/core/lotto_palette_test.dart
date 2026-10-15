@@ -48,9 +48,13 @@ void main() {
       expect(lottoBallTextColor(10), const Color(0xFF1F1F1F));
     });
 
-    test('나머지 볼 위에는 흰 글자', () {
+    test('검은 볼은 흰 글자, 밝은 유색 볼은 검은 글자', () {
       for (final n in [11, 25, 35, 45]) {
-        expect(lottoBallTextColor(n), Colors.white, reason: '$n번');
+        expect(
+          lottoBallTextColor(n),
+          n == 35 ? Colors.white : Colors.black,
+          reason: '$n번',
+        );
       }
     });
   });

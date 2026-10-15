@@ -23,5 +23,5 @@ Color lottoBallTextColor(int number) {
   if (number <= 10) {
     return const Color(0xFF1F1F1F);
   }
-  return Colors.white;
+  return number >= 31 && number <= 40 ? Colors.white : Colors.black;
 }

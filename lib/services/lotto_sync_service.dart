@@ -8,13 +8,21 @@ class LottoSyncService {
   LottoSyncService._();
 
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  static Future<int>? _running;
 
   /// 앱 시작 시 호출. 로컬 DB보다 새 회차가 있으면 동기화.
   /// 반환값: 새로 추가된 회차 수 (0 = 이미 최신)
-  static Future<int> syncIfNeeded() async {
+  static Future<int> syncIfNeeded() =>
+      _running ??= _sync().whenComplete(() => _running = null);
+
+  static Future<int> _sync() async {
     try {
       // Firestore meta 문서에서 최신 회차 확인
-      final metaDoc = await _firestore.collection('meta').doc('latest').get();
+      final metaDoc = await _firestore
+          .collection('meta')
+          .doc('latest')
+          .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 12));
       if (!metaDoc.exists) return 0;
 
       final remoteRound = metaDoc.data()!['round'] as int;
@@ -33,7 +41,8 @@ class LottoSyncService {
         final doc = await _firestore
             .collection('lotto_draws')
             .doc(r.toString())
-            .get();
+            .get(const GetOptions(source: Source.server))
+            .timeout(const Duration(seconds: 12));
         if (!doc.exists) continue;
 
         final data = doc.data()!;

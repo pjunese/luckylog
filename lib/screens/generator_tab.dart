@@ -1,3 +1,4 @@
+import '../widgets/app_snack_bar.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
@@ -196,9 +197,11 @@ class _NumberGeneratorTabState extends State<NumberGeneratorTab>
           );
 
           return Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            decoration: BoxDecoration(
+              color: Theme.of(ctx).colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
             ),
             padding: EdgeInsets.only(
               left: 20,
@@ -213,14 +216,15 @@ class _NumberGeneratorTabState extends State<NumberGeneratorTab>
                   // 헤더
                   Row(
                     children: [
-                      const Text(
-                        '조건 설정',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
+                      const Expanded(
+                        child: Text(
+                          '조건 설정',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                      const Spacer(),
                       if (activeConditionCount() > 0)
                         GestureDetector(
                           onTap: () => update(() {
@@ -512,11 +516,10 @@ class _NumberGeneratorTabState extends State<NumberGeneratorTab>
     }
 
     if (newUnlocked.isEmpty && needCount > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('조건이 너무 엄격해서 번호를 생성할 수 없습니다. 조건을 완화해주세요.'),
-          duration: Duration(seconds: 2),
-        ),
+      showAppSnackBar(
+        context,
+        content: Text('조건이 너무 엄격해서 번호를 생성할 수 없습니다. 조건을 완화해주세요.'),
+        duration: Duration(seconds: 2),
       );
       return;
     }
@@ -607,11 +610,10 @@ class _NumberGeneratorTabState extends State<NumberGeneratorTab>
       [...nums]..sort(),
     ]);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('번호 세트에 저장됐습니다'),
-          duration: Duration(seconds: 2),
-        ),
+      showAppSnackBar(
+        context,
+        content: Text('번호 세트에 저장됐습니다'),
+        duration: Duration(seconds: 2),
       );
     }
   }
@@ -1080,16 +1082,18 @@ class _NumberGeneratorTabState extends State<NumberGeneratorTab>
                                         : Colors.grey,
                                   ),
                                   const SizedBox(width: 6),
-                                  Text(
-                                    '랜덤',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
-                                      color: !_photoMode
-                                          ? Theme.of(
-                                              context,
-                                            ).colorScheme.primary
-                                          : Colors.grey,
+                                  Flexible(
+                                    child: Text(
+                                      '랜덤',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                        color: !_photoMode
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.primary
+                                            : Colors.grey,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -1136,16 +1140,18 @@ class _NumberGeneratorTabState extends State<NumberGeneratorTab>
                                         : Colors.grey,
                                   ),
                                   const SizedBox(width: 6),
-                                  Text(
-                                    '사진으로 뽑기',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
-                                      color: _photoMode
-                                          ? Theme.of(
-                                              context,
-                                            ).colorScheme.primary
-                                          : Colors.grey,
+                                  Flexible(
+                                    child: Text(
+                                      '사진으로 뽑기',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                        color: _photoMode
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.primary
+                                            : Colors.grey,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -1165,107 +1171,112 @@ class _NumberGeneratorTabState extends State<NumberGeneratorTab>
             // 슬롯 6개
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: List.generate(6, (i) {
-                  final int? num = _numbers[i];
-                  final bool rolling =
-                      _isRolling && (!_locked[i] || num == null);
-                  final int display = rolling
-                      ? _rollingDisplay[i]
-                      : (num ?? _rollingDisplay[i]);
-                  final bool confirmed = num != null;
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final ballSize = min(50.0, (constraints.maxWidth - 30) / 6);
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: List.generate(6, (i) {
+                      final int? num = _numbers[i];
+                      final bool rolling =
+                          _isRolling && (!_locked[i] || num == null);
+                      final int display = rolling
+                          ? _rollingDisplay[i]
+                          : (num ?? _rollingDisplay[i]);
+                      final bool confirmed = num != null;
 
-                  return GestureDetector(
-                    onTap: confirmed && !_isRolling
-                        ? () => setState(() => _locked[i] = !_locked[i])
-                        : null,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: confirmed
-                                ? lottoBallColor(display)
-                                : Colors.grey.shade200,
-                            shape: BoxShape.circle,
-                            boxShadow: confirmed
-                                ? [
-                                    BoxShadow(
-                                      color: lottoBallColor(
-                                        display,
-                                      ).withValues(alpha: 0.4),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                          child: Center(
-                            child: rolling
-                                ? Text(
-                                    '$display',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: lottoBallTextColor(display),
-                                    ),
-                                  )
-                                : confirmed
-                                ? Text(
-                                    '$num',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: lottoBallTextColor(num),
-                                    ),
-                                  )
-                                : Text(
-                                    '?',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.grey.shade400,
-                                    ),
-                                  ),
-                          ),
-                        ),
-                        if (_locked[i] && confirmed)
-                          Positioned(
-                            top: -4,
-                            right: -4,
-                            child: Container(
-                              width: 18,
-                              height: 18,
+                      return GestureDetector(
+                        onTap: confirmed && !_isRolling
+                            ? () => setState(() => _locked[i] = !_locked[i])
+                            : null,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              width: ballSize,
+                              height: ballSize,
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: confirmed
+                                    ? lottoBallColor(display)
+                                    : Colors.grey.shade200,
                                 shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Colors.amber.shade600,
-                                  width: 1.5,
-                                ),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Colors.black26,
-                                    blurRadius: 3,
-                                    offset: Offset(0, 1),
-                                  ),
-                                ],
+                                boxShadow: confirmed
+                                    ? [
+                                        BoxShadow(
+                                          color: lottoBallColor(
+                                            display,
+                                          ).withValues(alpha: 0.4),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ]
+                                    : null,
                               ),
-                              child: const Icon(
-                                Icons.lock,
-                                size: 11,
-                                color: Colors.amber,
+                              child: Center(
+                                child: rolling
+                                    ? Text(
+                                        '$display',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: lottoBallTextColor(display),
+                                        ),
+                                      )
+                                    : confirmed
+                                    ? Text(
+                                        '$num',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: lottoBallTextColor(num),
+                                        ),
+                                      )
+                                    : Text(
+                                        '?',
+                                        style: TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.grey.shade400,
+                                        ),
+                                      ),
                               ),
                             ),
-                          ),
-                      ],
-                    ),
+                            if (_locked[i] && confirmed)
+                              Positioned(
+                                top: -4,
+                                right: -4,
+                                child: Container(
+                                  width: 18,
+                                  height: 18,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.amber.shade600,
+                                      width: 1.5,
+                                    ),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.black26,
+                                        blurRadius: 3,
+                                        offset: Offset(0, 1),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.lock,
+                                    size: 11,
+                                    color: Colors.amber,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    }),
                   );
-                }),
+                },
               ),
             ),
 
@@ -1446,13 +1457,15 @@ class _NumberGeneratorTabState extends State<NumberGeneratorTab>
                 ),
                 child: Row(
                   children: [
-                    Text(
-                      '이번에 저장한 번호',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.titleSmall?.copyWith(color: Colors.grey),
+                    Expanded(
+                      child: Text(
+                        '이번에 저장한 번호',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleSmall?.copyWith(color: Colors.grey),
+                      ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
                     Text(
                       '${_generatedGames.length}세트',
                       style: const TextStyle(color: Colors.grey, fontSize: 12),

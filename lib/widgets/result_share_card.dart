@@ -130,7 +130,7 @@ class ResultShareCard extends StatelessWidget {
                 ),
               const Spacer(),
               const Text(
-                '로또노트',
+                '럭키로그',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,

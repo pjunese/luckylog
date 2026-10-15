@@ -45,7 +45,7 @@ android {
 
     signingConfigs {
         create("release") {
-            // key.properties 가 없으면(예: CI, 다른 개발자 환경) 아래 buildTypes 에서
+            // key.properties 가 없으면(예: CI, 다른 개발자 환경) prod flavor에서
             // 디버그 키로 폴백하므로 여기서는 값이 비어도 된다.
             keyAlias = keystoreProperties.getProperty("keyAlias")
             keyPassword = keystoreProperties.getProperty("keyPassword")
@@ -54,15 +54,33 @@ android {
         }
     }
 
-    buildTypes {
-        release {
-            // 릴리즈 키가 준비된 경우에만 사용. 없으면 디버그 키로 빌드는 되지만
-            // 플레이 스토어 업로드는 거부된다.
+    flavorDimensions += "environment"
+    productFlavors {
+        create("prod") {
+            dimension = "environment"
             signingConfig = if (keystorePropertiesFile.exists()) {
                 signingConfigs.getByName("release")
             } else {
                 signingConfigs.getByName("debug")
             }
+            manifestPlaceholders["appLabel"] = "럭키로그"
+            manifestPlaceholders["kakaoScheme"] = "kakaoec26372ba0fec512e3f8a00d0295d35c"
+        }
+        create("dev") {
+            dimension = "environment"
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            manifestPlaceholders["appLabel"] = "럭키로그 DEV"
+            manifestPlaceholders["kakaoScheme"] = "kakao0c1edce5106a52b1df62178374955dbf"
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    buildTypes {
+        release {
+            // Inherit the flavor signing: production keeps its release key;
+            // dev uses the debug key registered with Kakao, including release mode.
+            signingConfig = null
         }
     }
 }

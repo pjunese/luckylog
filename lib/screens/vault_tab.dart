@@ -1,3 +1,6 @@
+import '../widgets/app_snack_bar.dart';
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -7,8 +10,12 @@ import '../db/lotto_database.dart';
 import '../models/draw_result.dart';
 import '../models/number_set.dart';
 import '../models/purchase_record.dart';
+import '../models/purchase_summary.dart';
 import 'draw_history_tab.dart';
+import 'number_set_trash_page.dart';
+import 'purchase_history_trash_page.dart';
 import '../widgets/mini_lotto_ball.dart';
+import '../widgets/purchase_number_ball.dart';
 import '../widgets/number_picker_sheet.dart';
 
 class NumberSetVaultTab extends StatefulWidget {
@@ -18,19 +25,25 @@ class NumberSetVaultTab extends StatefulWidget {
     required this.purchaseHistory,
     required this.onSaveSet,
     required this.onDeleteSet,
+    this.onRestoreSet,
     required this.onTogglePurchased,
     required this.onAddPurchaseHistory,
     required this.onDeletePurchaseHistory,
+    this.onRestorePurchaseHistory,
+    required this.onMarkResultsChecked,
   });
 
   final List<NumberSet> savedSets;
   final List<PurchaseRecord> purchaseHistory;
   final Future<void> Function(List<List<int>>) onSaveSet;
   final Future<void> Function(int) onDeleteSet;
+  final Future<void> Function(int)? onRestoreSet;
   final Future<void> Function(int, bool) onTogglePurchased;
   final Future<void> Function(List<List<int>>, int, String)
   onAddPurchaseHistory;
   final Future<void> Function(int) onDeletePurchaseHistory;
+  final Future<void> Function(int)? onRestorePurchaseHistory;
+  final Future<void> Function(List<int>) onMarkResultsChecked;
 
   @override
   State<NumberSetVaultTab> createState() => NumberSetVaultTabState();
@@ -49,10 +62,122 @@ class NumberSetVaultTabState extends State<NumberSetVaultTab>
 
   // round → DrawResult 캐시 (구매내역 당첨결과 표시용)
   final Map<int, DrawResult> _drawCache = {};
+  final Set<int> _markingResults = {};
+  late final String? _owner;
+  int _drawGeneration = 0;
+
+  bool get _ownsView => mounted && LottoDatabase.instance.accountKey == _owner;
+
+  Future<void> _moveToTrash(int id) async {
+    try {
+      await widget.onDeleteSet(id);
+      if (!mounted || !_ownsView) return;
+      showAppSnackBar(
+        context,
+        content: const Text('번호세트를 휴지통으로 이동했습니다.'),
+        action: widget.onRestoreSet == null
+            ? null
+            : SnackBarAction(
+                label: '실행 취소',
+                onPressed: () async {
+                  if (!_ownsView) return;
+                  try {
+                    await widget.onRestoreSet!(id);
+                  } catch (_) {
+                    if (mounted && _ownsView) {
+                      showAppSnackBar(
+                        context,
+                        content: Text('복원하지 못했어요. 휴지통에서 다시 시도해주세요.'),
+                      );
+                    }
+                  }
+                },
+              ),
+      );
+    } catch (_) {
+      if (mounted && _ownsView) {
+        showAppSnackBar(context, content: Text('휴지통으로 이동하지 못했어요. 다시 시도해주세요.'));
+      }
+    }
+  }
+
+  void _openTrash() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => NumberSetTrashPage(
+          loadSets: () async {
+            if (!_ownsView) throw StateError('계정이 변경되었습니다.');
+            final rows = await LottoDatabase.instance.getDeletedNumberSets();
+            if (!_ownsView) throw StateError('계정이 변경되었습니다.');
+            return rows.map(NumberSet.fromDb).toList();
+          },
+          restoreSet: (id) async {
+            if (!_ownsView) throw StateError('계정이 변경되었습니다.');
+            await widget.onRestoreSet!(id);
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _movePurchaseToTrash(int id) async {
+    try {
+      await widget.onDeletePurchaseHistory(id);
+      if (!mounted || !_ownsView) return;
+      showAppSnackBar(
+        context,
+        content: const Text('구매내역을 휴지통으로 이동했습니다.'),
+        action: widget.onRestorePurchaseHistory == null
+            ? null
+            : SnackBarAction(
+                label: '실행 취소',
+                onPressed: () async {
+                  if (!_ownsView) return;
+                  try {
+                    await widget.onRestorePurchaseHistory!(id);
+                  } catch (_) {
+                    if (mounted && _ownsView) {
+                      showAppSnackBar(
+                        context,
+                        content: Text('복원하지 못했어요. 휴지통에서 다시 시도해주세요.'),
+                      );
+                    }
+                  }
+                },
+              ),
+      );
+    } catch (_) {
+      if (mounted && _ownsView) {
+        showAppSnackBar(context, content: Text('휴지통으로 이동하지 못했어요. 다시 시도해주세요.'));
+      }
+    }
+  }
+
+  void _openPurchaseTrash() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PurchaseHistoryTrashPage(
+          loadRecords: () async {
+            if (!_ownsView) throw StateError('계정이 변경되었습니다.');
+            final rows = await LottoDatabase.instance
+                .getDeletedPurchaseHistory();
+            if (!_ownsView) throw StateError('계정이 변경되었습니다.');
+            return rows.map(PurchaseRecord.fromDb).toList();
+          },
+          restoreRecord: (id) async {
+            if (!_ownsView) throw StateError('계정이 변경되었습니다.');
+            await widget.onRestorePurchaseHistory!(id);
+          },
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
     super.initState();
+    _owner = LottoDatabase.instance.accountKey;
+    LottoDatabase.instance.drawRevision.addListener(_onDrawChanged);
     _tabController = TabController(length: 3, vsync: this);
     _tabController!.addListener(() {
       FocusManager.instance.primaryFocus?.unfocus();
@@ -73,33 +198,53 @@ class NumberSetVaultTabState extends State<NumberSetVaultTab>
     _tabController?.animateTo(index);
   }
 
+  void _onDrawChanged() {
+    if (_ownsView) unawaited(_loadDrawCache());
+  }
+
   Future<void> _loadDrawCache() async {
+    final generation = ++_drawGeneration;
     final rounds = widget.purchaseHistory.map((r) => r.round).toSet();
-    for (final round in rounds) {
-      if (_drawCache.containsKey(round)) continue;
-      final row = await LottoDatabase.instance.getDrawResult(round);
-      if (row != null && mounted) {
-        setState(() {
-          _drawCache[round] = DrawResult(
-            round: round,
-            winningNumbers: [
-              row['num1'] as int,
-              row['num2'] as int,
-              row['num3'] as int,
-              row['num4'] as int,
-              row['num5'] as int,
-              row['num6'] as int,
-            ],
-            bonusNumber: row['bonus'] as int,
-            drawDate: '',
-          );
-        });
+    try {
+      final draws = await LottoDatabase.instance.getDrawResultsForRounds(
+        rounds,
+      );
+      if (!_ownsView || generation != _drawGeneration) return;
+      setState(() {
+        _drawCache
+          ..clear()
+          ..addAll(draws);
+      });
+    } catch (e) {
+      debugPrint('[Vault] 당첨 결과 로드 실패: $e');
+    }
+  }
+
+  Future<void> _markResultChecked(PurchaseRecord record) async {
+    if (!_ownsView ||
+        _markingResults.contains(record.id) ||
+        !hasActualDraw(_drawCache[record.round], round: record.round) ||
+        record.isResultChecked) {
+      return;
+    }
+    setState(() => _markingResults.add(record.id));
+    try {
+      await widget.onMarkResultsChecked([record.id]);
+    } catch (e) {
+      if (mounted && _ownsView) {
+        showAppSnackBar(
+          context,
+          content: Text('확인 상태를 저장하지 못했습니다. 다시 시도해주세요.'),
+        );
       }
+    } finally {
+      if (_ownsView) setState(() => _markingResults.remove(record.id));
     }
   }
 
   @override
   void dispose() {
+    LottoDatabase.instance.drawRevision.removeListener(_onDrawChanged);
     _tabController?.dispose();
     super.dispose();
   }
@@ -137,9 +282,7 @@ class NumberSetVaultTabState extends State<NumberSetVaultTab>
   Future<void> _saveNumberSet() async {
     for (int i = 0; i < _gameCount; i++) {
       if (_selectedNumbers[i].length != _numbersPerGame) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('${i + 1}게임 번호를 6개 선택해 주세요.')));
+        showAppSnackBar(context, content: Text('${i + 1}게임 번호를 6개 선택해 주세요.'));
         return;
       }
     }
@@ -150,8 +293,9 @@ class NumberSetVaultTabState extends State<NumberSetVaultTab>
     await widget.onSaveSet(games);
     _clearAll();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${games.length}게임 번호세트를 저장했습니다.')),
+      showAppSnackBar(
+        context,
+        content: Text('${games.length}게임 번호세트를 저장했습니다.'),
       );
     }
   }
@@ -195,7 +339,7 @@ class NumberSetVaultTabState extends State<NumberSetVaultTab>
             const Divider(height: 1),
             Expanded(
               child: CupertinoPicker(
-                scrollController: FixedExtentScrollController(initialItem: 0),
+                scrollController: FixedExtentScrollController(initialItem: 1),
                 itemExtent: 44,
                 onSelectedItemChanged: (i) => selectedRound = maxRound - i,
                 children: List.generate((maxRound).clamp(1, 200), (i) {
@@ -232,9 +376,7 @@ class NumberSetVaultTabState extends State<NumberSetVaultTab>
     await widget.onTogglePurchased(set.id, true);
     await widget.onAddPurchaseHistory(set.games, round, 'manual');
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('구매내역에 저장됐습니다.')));
+      showAppSnackBar(context, content: Text('구매내역에 저장됐습니다.'));
       _tabController?.animateTo(1);
     }
   }
@@ -257,9 +399,7 @@ class NumberSetVaultTabState extends State<NumberSetVaultTab>
     if (round == null || !mounted) return;
     await widget.onAddPurchaseHistory(games, round, 'manual');
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('구매내역에 저장됐습니다.')));
+      showAppSnackBar(context, content: Text('구매내역에 저장됐습니다.'));
     }
   }
 
@@ -282,9 +422,7 @@ class NumberSetVaultTabState extends State<NumberSetVaultTab>
     if (round == null || !mounted) return;
     await widget.onAddPurchaseHistory(selected, round, 'manual');
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('구매내역에 저장됐습니다.')));
+      showAppSnackBar(context, content: Text('구매내역에 저장됐습니다.'));
     }
   }
 
@@ -321,8 +459,8 @@ class NumberSetVaultTabState extends State<NumberSetVaultTab>
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('구매내역 삭제'),
-        content: const Text('이 구매내역을 삭제하시겠습니까?'),
+        title: const Text('구매내역을 휴지통으로 이동'),
+        content: const Text('삭제한 내역은 구매내역 휴지통에서 다시 복원할 수 있어요.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -336,7 +474,7 @@ class NumberSetVaultTabState extends State<NumberSetVaultTab>
         ],
       ),
     );
-    if (confirmed == true) await widget.onDeletePurchaseHistory(id);
+    if (confirmed == true && _ownsView) await _movePurchaseToTrash(id);
   }
 
   @override
@@ -524,9 +662,21 @@ class NumberSetVaultTabState extends State<NumberSetVaultTab>
           ],
         ),
         const SizedBox(height: 20),
-        Text(
-          '보관함 (${widget.savedSets.length})',
-          style: Theme.of(context).textTheme.titleMedium,
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '보관함 (${widget.savedSets.length})',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            if (widget.onRestoreSet != null)
+              TextButton.icon(
+                onPressed: _openTrash,
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('휴지통'),
+              ),
+          ],
         ),
         const SizedBox(height: 8),
         if (widget.savedSets.isEmpty)
@@ -556,9 +706,9 @@ class NumberSetVaultTabState extends State<NumberSetVaultTab>
                           ),
                           const Spacer(),
                           IconButton(
-                            onPressed: () => widget.onDeleteSet(entry.value.id),
+                            onPressed: () => _moveToTrash(entry.value.id),
                             icon: const Icon(Icons.delete_outline),
-                            tooltip: '삭제',
+                            tooltip: '휴지통으로 이동',
                           ),
                         ],
                       ),
@@ -616,221 +766,282 @@ class NumberSetVaultTabState extends State<NumberSetVaultTab>
   }
 
   Widget _buildPurchaseHistory() {
-    return Stack(
+    return Column(
       children: [
-        widget.purchaseHistory.isEmpty
-            ? const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.receipt_long_outlined,
-                      size: 56,
-                      color: Colors.grey,
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      '구매내역이 없습니다',
-                      style: TextStyle(color: Colors.grey, fontSize: 16),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'QR 스캔이나 직접 추가로 저장하세요.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                  ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  '구매내역',
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-                itemCount: widget.purchaseHistory.length,
-                itemBuilder: (ctx, index) {
-                  final PurchaseRecord record =
-                      widget.purchaseHistory[widget.purchaseHistory.length -
-                          1 -
-                          index];
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Text(
-                                  '${record.round}회',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  record.drawDate,
-                                  style: TextStyle(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                const Spacer(),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: record.source == 'qr'
-                                        ? Colors.blue.shade50
-                                        : Colors.green.shade50,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    record.source == 'qr' ? 'QR' : '직접입력',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: record.source == 'qr'
-                                          ? Colors.blue.shade700
-                                          : Colors.green.shade700,
-                                    ),
-                                  ),
-                                ),
-                                IconButton(
-                                  onPressed: () =>
-                                      _confirmDeleteHistory(record.id),
-                                  icon: const Icon(
-                                    Icons.delete_outline,
-                                    size: 20,
-                                  ),
-                                  tooltip: '삭제',
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            ...record.games.asMap().entries.map((g) {
-                              final draw = _drawCache[record.round];
-                              final prize = draw != null
-                                  ? _calcPrize(g.value, draw)
-                                  : null;
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: Row(
-                                  children: [
-                                    SizedBox(
-                                      width: 42,
-                                      child: Text(
-                                        '${g.key + 1}게임',
-                                        style: TextStyle(
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.onSurfaceVariant,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Wrap(
-                                        spacing: 5,
-                                        runSpacing: 4,
-                                        children: g.value.map((n) {
-                                          final hit =
-                                              draw != null &&
-                                              draw.winningNumbers.contains(n);
-                                          final bonus =
-                                              draw != null &&
-                                              n == draw.bonusNumber;
-                                          return Container(
-                                            width: 26,
-                                            height: 26,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color: hit || bonus
-                                                  ? lottoBallColor(n)
-                                                  : lottoBallColor(
-                                                      n,
-                                                    ).withValues(alpha: 0.25),
-                                              border: bonus
-                                                  ? Border.all(
-                                                      color: Colors.orange,
-                                                      width: 2,
-                                                    )
-                                                  : null,
-                                            ),
-                                            child: Center(
-                                              child: Text(
-                                                '$n',
-                                                style: TextStyle(
-                                                  color: hit || bonus
-                                                      ? lottoBallTextColor(n)
-                                                      : Colors.grey.shade500,
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w700,
-                                                ),
+              ),
+              if (widget.onRestorePurchaseHistory != null)
+                TextButton.icon(
+                  onPressed: _openPurchaseTrash,
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('휴지통'),
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Stack(
+            children: [
+              widget.purchaseHistory.isEmpty
+                  ? const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.receipt_long_outlined,
+                            size: 56,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: 12),
+                          Text(
+                            '구매내역이 없습니다',
+                            style: TextStyle(color: Colors.grey, fontSize: 16),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'QR 스캔이나 직접 추가로 저장하세요.',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 164),
+                      itemCount: widget.purchaseHistory.length,
+                      itemBuilder: (ctx, index) {
+                        final PurchaseRecord record =
+                            widget.purchaseHistory[index];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          children: [
+                                            Text(
+                                              '${record.round}회',
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 16,
                                               ),
                                             ),
-                                          );
-                                        }).toList(),
+                                            Text(
+                                              record.drawDate,
+                                              style: TextStyle(
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.onSurfaceVariant,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                    if (prize != null)
                                       Container(
-                                        margin: const EdgeInsets.only(left: 6),
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 7,
+                                          horizontal: 8,
                                           vertical: 2,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: _prizeBadgeColor(prize),
+                                          color: record.source == 'qr'
+                                              ? Colors.blue.shade50
+                                              : Colors.green.shade50,
                                           borderRadius: BorderRadius.circular(
-                                            10,
+                                            12,
                                           ),
                                         ),
                                         child: Text(
-                                          prize,
-                                          style: const TextStyle(
-                                            color: Colors.white,
+                                          record.source == 'qr' ? 'QR' : '직접입력',
+                                          style: TextStyle(
                                             fontSize: 11,
-                                            fontWeight: FontWeight.w700,
+                                            fontWeight: FontWeight.w600,
+                                            color: record.source == 'qr'
+                                                ? Colors.blue.shade700
+                                                : Colors.green.shade700,
                                           ),
                                         ),
-                                      )
-                                    else if (draw == null)
-                                      const SizedBox(width: 0),
-                                  ],
-                                ),
-                              );
-                            }),
-                          ],
-                        ),
-                      ),
+                                      ),
+                                      IconButton(
+                                        onPressed: () =>
+                                            _confirmDeleteHistory(record.id),
+                                        icon: const Icon(
+                                          Icons.delete_outline,
+                                          size: 20,
+                                        ),
+                                        tooltip: '휴지통으로 이동',
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ...record.games.asMap().entries.map((g) {
+                                    final draw = _drawCache[record.round];
+                                    final prize = draw != null
+                                        ? _calcPrize(g.value, draw)
+                                        : null;
+                                    return Padding(
+                                      padding: const EdgeInsets.only(bottom: 6),
+                                      child: Row(
+                                        children: [
+                                          SizedBox(
+                                            width: 42,
+                                            child: Text(
+                                              '${g.key + 1}게임',
+                                              style: TextStyle(
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.onSurfaceVariant,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ),
+                                          Expanded(
+                                            child: Wrap(
+                                              spacing: 5,
+                                              runSpacing: 4,
+                                              children: g.value.map((n) {
+                                                final hit =
+                                                    draw != null &&
+                                                    draw.winningNumbers
+                                                        .contains(n);
+                                                final bonus =
+                                                    draw != null &&
+                                                    n == draw.bonusNumber;
+                                                return PurchaseNumberBall(
+                                                  number: n,
+                                                  matched: hit,
+                                                  bonus: bonus,
+                                                  pending: draw == null,
+                                                );
+                                              }).toList(),
+                                            ),
+                                          ),
+                                          if (prize != null)
+                                            Container(
+                                              margin: const EdgeInsets.only(
+                                                left: 6,
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 7,
+                                                    vertical: 2,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: _prizeBadgeColor(prize),
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                              ),
+                                              child: Text(
+                                                prize,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                            )
+                                          else if (draw == null)
+                                            const SizedBox(width: 0),
+                                        ],
+                                      ),
+                                    );
+                                  }),
+                                  const SizedBox(height: 10),
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child:
+                                        !hasActualDraw(
+                                          _drawCache[record.round],
+                                          round: record.round,
+                                        )
+                                        ? Text(
+                                            PurchaseSummary.statusFor(
+                                              record,
+                                              draws: _drawCache,
+                                            ).label,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                            ),
+                                          )
+                                        : record.isResultChecked
+                                        ? const Chip(
+                                            avatar: Icon(
+                                              Icons.check_circle_outline,
+                                              size: 18,
+                                            ),
+                                            label: Text('확인 완료'),
+                                          )
+                                        : TextButton.icon(
+                                            onPressed:
+                                                _markingResults.contains(
+                                                  record.id,
+                                                )
+                                                ? null
+                                                : () => _markResultChecked(
+                                                    record,
+                                                  ),
+                                            icon: const Icon(
+                                              Icons.task_alt,
+                                              size: 18,
+                                            ),
+                                            label: Text(
+                                              _markingResults.contains(
+                                                    record.id,
+                                                  )
+                                                  ? '저장 중…'
+                                                  : '결과 확인 완료',
+                                            ),
+                                          ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
-        Positioned(
-          bottom: 16,
-          right: 16,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              FloatingActionButton.extended(
-                heroTag: 'addFromSets',
-                onPressed: widget.savedSets.isEmpty ? null : _addFromSavedSets,
-                icon: const Icon(Icons.playlist_add),
-                label: const Text('내 번호에서 선택'),
-                backgroundColor: widget.savedSets.isEmpty ? Colors.grey : null,
-              ),
-              const SizedBox(height: 10),
-              FloatingActionButton.extended(
-                heroTag: 'addPurchase',
-                onPressed: _addManualPurchase,
-                icon: const Icon(Icons.edit),
-                label: const Text('직접 입력'),
+              Positioned(
+                bottom: 16,
+                right: 16,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    FloatingActionButton.extended(
+                      heroTag: 'addFromSets',
+                      onPressed: widget.savedSets.isEmpty
+                          ? null
+                          : _addFromSavedSets,
+                      icon: const Icon(Icons.playlist_add),
+                      label: const Text('내 번호에서 선택'),
+                      backgroundColor: widget.savedSets.isEmpty
+                          ? Colors.grey
+                          : null,
+                    ),
+                    const SizedBox(height: 10),
+                    FloatingActionButton.extended(
+                      heroTag: 'addPurchase',
+                      onPressed: _addManualPurchase,
+                      icon: const Icon(Icons.edit),
+                      label: const Text('직접 입력'),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -889,10 +1100,9 @@ class _ManualPurchaseNumberSheetState
   void _confirm() {
     for (int i = 0; i < _gameCount; i++) {
       if (_selectedNumbers[i].length != widget.numbersPerGame) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${i + 1}게임 번호를 ${widget.numbersPerGame}개 선택해 주세요.'),
-          ),
+        showAppSnackBar(
+          context,
+          content: Text('${i + 1}게임 번호를 ${widget.numbersPerGame}개 선택해 주세요.'),
         );
         return;
       }
