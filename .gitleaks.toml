@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "kakao-rest-api-key"
+description = "Kakao REST credentials belong in server-side Secret Manager"
+regex = '''(?i)(?:kakao[a-z0-9_-]*rest[a-z0-9_-]*key\s*[:=]\s*["']?|kakaoak\s+)([a-f0-9]{32})'''
+secretGroup = 1
+keywords = ["kakao"]

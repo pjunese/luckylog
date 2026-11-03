@@ -86,3 +86,10 @@ functions/.runtimeconfig.json
 **/*service-account*.json
 **/*serviceAccount*.json
 **/*firebase-adminsdk*.json
+
+# Private server credentials and local environment files
+.envrc
+.secret.local
+.secret.*.local
+*.pfx
+**/*service_account*.json

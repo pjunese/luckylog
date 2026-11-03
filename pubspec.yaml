@@ -45,6 +45,7 @@ dependencies:
   # iOS 16이 필요한 반면 플러그인은 15.0 지원이라고 선언해 빌드가 막힌다.
   # SDK 12.9.0을 쓰는 4.6.0 계열로 묶어둔다. (올릴 땐 iOS 최소버전도 함께 검토)
   firebase_core: 4.6.0
+  firebase_app_check: 0.4.2
   cloud_firestore: ^6.2.0
   kakao_flutter_sdk_user: ^1.9.10
   image_picker: ^1.1.2

@@ -86,3 +86,12 @@ Firebase 클라이언트 설정과 앱에 내장되는 SDK 식별자는 앱 구�
 - [QR 일괄 등록](docs/qr-batch-and-summary.md)
 - [럭키로그 브랜딩](docs/luckylog-branding-20260923.md)
 - [TestFlight 배포 안내](docs/testflight-1.1.0.md)
+
+
+## 공개 저장소의 인증정보 관리
+
+- `.env`, 서명키, 서비스 계정 개인키, 서버 REST 키는 Git에 넣지 않습니다.
+- 주변 판매점 검색은 App Check로 보호하는 `searchNearbyStores` 함수를 호출합니다. 카카오 REST 키는 Firebase Secret Manager의 `KAKAO_LOCAL_REST_KEY`에만 보관하며 앱이나 `--dart-define`에 넣지 않습니다.
+- 별도 프로젝트에서 실행하려면 Firebase 앱 설정과 `functions/nearby_search.js`의 허용 앱 ID를 자신의 환경에 맞추고, App Check 제공자 및 서버 비밀값을 설정해야 합니다.
+- 개발용 debug token도 비밀정보입니다. `.env` 예시나 Git 기록에 포함하지 않습니다.
+- Firebase 클라이언트 설정은 서버 관리자 자격증명이 아닙니다. 데이터 권한은 Firebase Security Rules와 서버 인증 검증으로 제한합니다.

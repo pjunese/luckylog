@@ -1,13 +1,13 @@
 import '../widgets/app_snack_bar.dart';
 import '../services/store_map_link.dart';
-import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../db/lotto_database.dart';
@@ -355,12 +355,7 @@ class _LuckyStoreMapScreenState extends State<LuckyStoreMapScreen>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildLuckyMap(),
-          const _NearbyStoresTab(
-            kakaoRestApiKey: '',
-          ),
-        ],
+        children: [_buildLuckyMap(), const _NearbyStoresTab()],
       ),
     );
   }
@@ -500,8 +495,7 @@ class _LuckyStoreMapScreenState extends State<LuckyStoreMapScreen>
 
 // ── 주변 판매점 탭 ──────────────────────────────────────────────
 class _NearbyStoresTab extends StatefulWidget {
-  const _NearbyStoresTab({required this.kakaoRestApiKey});
-  final String kakaoRestApiKey;
+  const _NearbyStoresTab();
 
   @override
   State<_NearbyStoresTab> createState() => _NearbyStoresTabState();
@@ -513,6 +507,7 @@ class _NearbyStoresTabState extends State<_NearbyStoresTab> {
   List<Map<String, dynamic>> _places = [];
 
   Future<void> _searchNearby() async {
+    if (!mounted || _isLoading) return;
     setState(() {
       _isLoading = true;
       _error = null;
@@ -523,6 +518,7 @@ class _NearbyStoresTabState extends State<_NearbyStoresTab> {
       if (perm == LocationPermission.denied) {
         perm = await Geolocator.requestPermission();
       }
+      if (!mounted) return;
       if (perm == LocationPermission.deniedForever ||
           perm == LocationPermission.denied) {
         setState(() {
@@ -534,50 +530,30 @@ class _NearbyStoresTabState extends State<_NearbyStoresTab> {
 
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 12),
         ),
       );
-      // 카카오 로컬 API 호출
-      final uri = Uri.parse(
-        'https://dapi.kakao.com/v2/local/search/keyword.json'
-        '?query=복권&x=${pos.longitude}&y=${pos.latitude}&radius=3000&size=15&sort=distance',
-      );
-      final resp = await http.get(
-        uri,
-        headers: {'Authorization': 'KakaoAK ${widget.kakaoRestApiKey}'},
-      );
-
-      if (resp.statusCode == 200) {
-        final data = json.decode(resp.body);
-        final docs = (data['documents'] as List<dynamic>);
-        setState(() {
-          _places = docs
-              .map(
-                (d) => {
-                  'name': d['place_name'] as String,
-                  'address':
-                      d['road_address_name'] as String? ??
-                      d['address_name'] as String? ??
-                      '',
-                  'distance':
-                      int.tryParse(d['distance'] as String? ?? '0') ?? 0,
-                  'lat': double.tryParse(d['y'] as String? ?? '0') ?? 0.0,
-                  'lng': double.tryParse(d['x'] as String? ?? '0') ?? 0.0,
-                  'url': d['place_url'] as String? ?? '',
-                },
-              )
-              .toList();
-          _isLoading = false;
-        });
-      } else {
-        setState(() {
-          _error = '검색 실패 (${resp.statusCode})';
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
+      if (!mounted) return;
+      final response =
+          await FirebaseFunctions.instanceFor(region: 'asia-northeast3')
+              .httpsCallable('searchNearbyStores')
+              .call({'latitude': pos.latitude, 'longitude': pos.longitude})
+              .timeout(const Duration(seconds: 15));
+      if (!mounted) return;
+      final places = (response.data as Map)['places'] as List;
       setState(() {
-        _error = '오류: $e';
+        _places = places
+            .map((p) => Map<String, dynamic>.from(p as Map))
+            .toList();
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is TimeoutException
+            ? '검색 시간이 초과되었습니다. 다시 시도해주세요.'
+            : '주변 판매점을 불러오지 못했습니다. 다시 시도해주세요.';
         _isLoading = false;
       });
     }

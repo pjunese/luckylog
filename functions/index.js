@@ -14,6 +14,7 @@ const { fetchFromNaver: _fetchFromNaver } = require('./lotto_source');
 
 // Firebase Secret Manager에 등록된 시크릿
 const adminSecret = defineSecret('ADMIN_SECRET');
+const nearbyKey = defineSecret('KAKAO_LOCAL_REST_KEY');
 
 initializeApp();
 const db = getFirestore();
@@ -22,6 +23,13 @@ const backend = createBackend({ db, messaging: getMessaging(), FieldValue, Https
 exports.registerUser = onCall(
   { region: 'asia-northeast3', timeoutSeconds: 120 },
   backend.registerUser
+);
+
+// Keep the Local REST key on the server; the client supplies only coordinates.
+exports.searchNearbyStores = onCall(
+  { region: 'asia-northeast3', enforceAppCheck: true, maxInstances: 3, concurrency: 10,
+    timeoutSeconds: 20, secrets: [nearbyKey] },
+  require('./nearby_search').createNearbySearch({ db, http: axios, key: () => nearbyKey.value(), HttpsError })
 );
 
 // ─────────────────────────────────────────

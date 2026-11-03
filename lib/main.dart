@@ -28,6 +28,7 @@ import 'screens/splash_screen.dart';
 import 'screens/stats_screen.dart';
 import 'screens/vault_tab.dart';
 import 'services/apple_auth_service.dart';
+import 'services/app_integrity_service.dart';
 import 'services/firebase_auth_bridge.dart';
 import 'services/kakao_auth_service.dart';
 import 'services/lotto_sync_service.dart';
@@ -53,6 +54,7 @@ void main() async {
   await Firebase.initializeApp(
     options: appFlavor == 'dev' ? null : DefaultFirebaseOptions.currentPlatform,
   );
+  await AppIntegrityService.initialize();
 
   // Crashlytics: Flutter 프레임워크 에러 자동 수집
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
